@@ -1,4 +1,4 @@
-# 安卓触屏映射工具
+7# 安卓触屏映射工具
 
 读取手柄，键盘，鼠标，触摸屏等输入并转换为虚拟触屏设备输出
 
@@ -8,15 +8,14 @@
 
 从release直接下载编译好的二进制程序
 
-一般手机平板下载 [go-touch-mapper_arm64](https://github.com/RiderLty/go-touch-mapper/releases/latest/download/go-touch-mapper_arm64)
+一般手机平板下载 [go-touch-mapper]
 
-androidX86下载 [go-touch-mapper_amd64](https://github.com/RiderLty/go-touch-mapper/releases/latest/download/go-touch-mapper_amd64)
-
+androidX86下载 [go-touch-mapper]
 或者使用国内镜像
 
-一般手机平板 [go-touch-mapper_arm64](https://vip.123pan.cn/1833788059/direct/projects/go-touch-mapper/build/go-touch-mapper_arm64)
+一般手机平板 [go-touch-mapper]
 
-androidX86 [go-touch-mapper_amd64](https://vip.123pan.cn/1833788059/direct/projects/go-touch-mapper/build/go-touch-mapper_amd64)
+androidX86 [go-touch-mapper]
 
 读取dev和创建uinput需要shell或者root权限
 
