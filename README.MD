@@ -1,4 +1,4 @@
-加qq群交流:1067729485
+加qq群交流:[1067729485](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=YvlipEC3TLgLDKu843aRyzKaiHi_Naw0&authKey=f2RLVU4bdbYsuvSSNN1FBbGbFcAuxG30iY2UIDhMGNM7Pa4fsIlf0YNvrg7n5%2F%2Bf&noverify=0&group_code=1067729485)
 
 
 7# 安卓触屏映射工具
