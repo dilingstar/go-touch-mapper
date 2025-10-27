@@ -11,7 +11,7 @@
 
 从release直接下载编译好的二进制程序
 
-一般手机平板下载 [go-touch-mapper]（https://github.com/dilingstar/go-touch-mapper/releases/download/V1.1.0/go-touch-mapper）
+一般手机平板下载 [go-touch-mapper](https://github.com/dilingstar/go-touch-mapper/releases/download/V1.1.0/go-touch-mapper)
 
 androidX86下载 [go-touch-mapper]
 或者使用国内镜像
