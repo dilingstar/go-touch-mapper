@@ -107,7 +107,7 @@ Arguments:
 
 程序运行后会显示控制后台地址```http://[ip]:61070/```用于编辑配置文件。
 
-如有需要，可参照[EXAMPLE.JSON](https://github.com/RiderLty/go-touch-mapper/blob/main/configs/EXAMPLE.JSON)手动修改配置文件
+如有需要，可参照[EXAMPLE.JSON](https://github.com/dilingstar/go-touch-mapper/blob/main/configs/EXAMPLE.JSON)手动修改配置文件
 
 可自动检测屏幕旋转方向，始终以左上角为原点，向右为X，向下为Y
 
