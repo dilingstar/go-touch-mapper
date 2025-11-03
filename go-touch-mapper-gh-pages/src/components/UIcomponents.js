@@ -177,7 +177,7 @@ const ViewShow = ({ x, y }) => {
         <div style={{
             position: 'absolute',
             left: 0,
-            top: y ,
+            top: y,
             width: "100vw",
             height: 1,
             backgroundColor: "#d90051",
@@ -208,6 +208,65 @@ const ViewShow = ({ x, y }) => {
     </div>
 }
 
+// --- [新增 V1.3.0] 视角重置半径 可视化 ---
+const ViewResetRadiusShow = ({ x, y, radius, enable }) => {
+    if (!enable) {
+        return null; // 如果未启用，则不渲染
+    }
+    const diameter = radius * 2;
+    return <div style={{
+        position: 'absolute',
+        left: x,
+        top: y,
+        width: diameter,
+        height: diameter,
+        borderRadius: "50%", // 确保是圆形
+        marginLeft: diameter / -2 - 1, // -1 是为了 (border width / 2)
+        marginTop: diameter / -2 - 1,
+        border: "2px dashed #FFEB3B", // 黄色虚线
+        pointerEvents: "none",
+        opacity: 0.7,
+    }} />
+}
+
+// --- [新增 V1.3.0] 滚轮滑块 可视化 ---
+const ScrollSliderShow = ({ x, y, lengthUp, lengthDown, enable }) => {
+    if (!enable) {
+        return null; // 如果未启用，则不渲染
+    }
+    const totalHeight = lengthUp + lengthDown;
+    return <div>
+        {/* 中心圆点 (暖色) */}
+        <div style={{
+            position: 'absolute',
+            left: x,
+            top: y,
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            marginLeft: -6,
+            marginTop: -6,
+            backgroundColor: "#FF9800", // 橙色
+            pointerEvents: "none",
+            zIndex: 1,
+        }} />
+        {/* 竖直条带 (冷色半透明) */}
+        <div style={{
+            position: 'absolute',
+            left: x,
+            top: y - lengthUp, // 从上边界开始
+            width: 10, // 滑块偏小
+            height: totalHeight, // 总高度
+            marginLeft: -5,
+            backgroundColor: "#03A9F4", // 蓝色
+            opacity: 0.5, // 半透明
+            pointerEvents: "none",
+            borderRadius: 5,
+        }} />
+    </div>
+}
+// --- [新增 V1.3.0] 结束 ---
+
 
 export {
     UploadButton,
@@ -218,4 +277,6 @@ export {
     CostumedInput,
     WheelShow,
     ViewShow,
+    ViewResetRadiusShow,
+    ScrollSliderShow,
 }
