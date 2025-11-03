@@ -21,6 +21,10 @@ import {
     CostumedInput,
     WheelShow,
     ViewShow,
+    // --- [新增 V1.3.1] 导入新组件 ---
+    ViewResetRadiusShow,
+    ScrollSliderShow,
+    // --- [新增 V1.3.1] 结束 ---
 } from "./UIcomponents"
 import { produce } from "immer"
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
@@ -167,7 +171,7 @@ export default function ConfigManager() {
     //所有坐标均为浮点数，真实值为数值*对应方向的屏幕尺寸
     //单向的量，比如轮盘半径，以宽度为标量
 
-    // --- [修改 V1.1.1] 初始化 state，加入 KEY_JITTER ---
+    // --- [修改 V1.3.5] 初始化 state, 增加 P2 和 P5 的新字段 ---
     const [config, setConfig] = useState({
         "SCREEN": {
             "SIZE": [
@@ -184,7 +188,14 @@ export default function ConfigManager() {
             "SPEED": [
                 0.3,
                 0.3
-            ]
+            ],
+            "VIEW_AUTO_RELEASE_ENABLE": false, // [V1.3.5] P5 新增
+            "VIEW_AUTO_RELEASE_MS": 200,     // [V1.3.5] P5 修改
+            "VIEW_RESET_RADIUS_ENABLE": false,
+            "VIEW_RESET_RADIUS": 0.1,
+            "VIEW_RESET_RADIUS_THICKNESS": 0.005, // [V1.3.5] P2 新增
+            "VIEW_RANDOM_RESET_ENABLE": false,
+            "VIEW_RANDOM_RESET_RADIUS": 0.01
         },
         "WHEEL": {
             "POS": [
@@ -194,44 +205,64 @@ export default function ConfigManager() {
             "RANGE": 0.05,
             "SHIFT_RANGE": 0.11,
             "SHIFT_RANGE_ENABLE": true,
-            "SHIFT_RANGE_SWITCH_ENABLE": true,
+            "SHIFT_PRESS_TOGGLE": false,
+            "SHIFT_RELEASE_TOGGLE": false,
             "WASD": [
                 "KEY_W",
                 "KEY_A",
                 "KEY_S",
                 "KEY_D"
             ],
-            // --- V1.1.0 默认值 ---
             "STEP_SPEED": 60,
+            "STAR_DYNAMIC_SPEED": { // V1.2.3 重命名
+                "ENABLE": false,
+                "MIN_SPEED": 10.0,
+                "FREQUENCY": 1.0
+            },
+            "RANDOM_START": {
+                "ENABLE": false,
+                "RADIUS": 0.01
+            },
             "WHEEL_PLANET": {
                 "ENABLE": false,
                 "RADIUS": 0.015,
                 "SPEED": 1.5,
-                "RANDOM_START_ENABLE": false // V1.0.1 新增
+                "PLANET_DYNAMIC_SPEED": {
+                    "ENABLE": false,
+                    "MIN_SPEED": 0.5,
+                    "FREQUENCY": 1.0
+                }
             },
-            "PLANET_JITTER": {
+            "PLANET_CURVE": { // V1.2.3 重命名
                 "ENABLE": false,
-                "AMOUNT": 0.005,
-                "FREQUENCY": 1.0 // V1.1.0 改为 float
+                "CURVE_AMOUNT": 0.005,
+                "CURVE_FREQUENCY": 1.0
             },
-            "STAR_JITTER": { // V1.0.1 重命名
+            "STAR_CURVE": { // V1.2.3 重命名
                 "ENABLE": false,
-                "AMOUNT": 0.002,
-                "FREQUENCY": 1.0 // V1.1.0 改为 float
-            },
-            "PATH_JITTER": { // V1.0.1 新增
-                "ENABLE": false,
-                "AMOUNT": 0.002,
-                "FREQUENCY": 1.0 // V1.1.0 新增
+                "CURVE_AMOUNT": 0.002,
+                "CURVE_FREQUENCY": 1.0
             }
-            // --- 默认值结束 ---
         },
-        // --- [新 V1.1.1] ---
+        "SCROLL_SLIDER": {
+            "ENABLE": false,
+            "POS": [
+                0.9,
+                0.5
+            ],
+            "LENGTH_UP": 0.2,
+            "LENGTH_DOWN": 0.2,
+            "TIMEOUT_S": 3,
+            "SPEED": 1.0,
+            "RANDOM_START_ENABLE": false,
+            "RANDOM_START_RADIUS": 0.005,
+            "CURVE_ENABLE": false,
+            "CURVE_AMOUNT": 0.005
+        },
         "KEY_JITTER": {
             "ENABLE": true,
             "AMOUNT": 0.003
         },
-        // --- [新 V1.1.1] 结束 ---
         "KEY_MAPS": {
             "BTN_LEFT": {
                 "TYPE": "PRESS",
@@ -248,9 +279,9 @@ export default function ConfigManager() {
                 ]
             }
         },
-       "IMG": "data:image/webp;base64,UklGRoIiAABXRUJQVlA4WAoAAAAoAAAAfwwAnwUASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggRiAAAFDMA50BKoAMoAU+MRiMRKIhoRAEACADBLS3cLuwj24D8AAACs3a8XJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtWAAP7/YcP//79pe+0vfaX+vb///TZv02b9Nm/9MWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEVYSUZGAAAATU0AKgAAAAgABAEAAAQAAAABAAAMgAEBAAQAAAABAAAFoAESAAMAAAABAAEAAIdpAAQAAAABAAAAPgAAAAAAAAAAAAAAAA=="
+        "IMG": "data:image/webp;base64,UklGRoIiAABXRUJQVlA4WAoAAAAoAAAAfwwAnwUASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggRiAAAFDMA50BKoAMoAU+MRiMRKIhoRAEACADBLS3cLuwj24D8AAACs3a8XJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtk5D32ych77ZOQ99snIe+2TkPfbJyHvtWAAP7/YcP//79pe+0vfaX+vb///TZv02b9Nm/9MWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEVYSUZGAAAATU0AKgAAAAgABAEAAAQAAAABAAAMgAEBAAQAAAABAAAFoAESAAMAAAABAAEAAIdpAAQAAAABAAAAPgAAAAAAAAAAAAAAAA=="
     })
-    // --- [修改 V1.1.1] 初始化 state 完毕 ---
+    // --- [修改 V1.3.5] 初始化 state 完毕 ---
 
 
     const [exportButtonText, setExportButtonText] = useState("更新配置")
@@ -266,6 +297,8 @@ export default function ConfigManager() {
     const getPostionValueY = useCallback((value) => { return parseInt(value * imgSize[1]) }, [imgSize])
 
     const viewCenterSetting = useRef(false)
+    // [V1.3.0] 新增滚轮滑块位置设置
+    const scrollSliderPosSelecting = useRef(false)
     const addingSwitchKey = useRef(false)
     const [addingSwitchKeyInfoText, setAddingSwitchKeyInfoText] = useState("添加映射切换键")
 
@@ -312,6 +345,16 @@ export default function ConfigManager() {
             viewCenterSetting.current = false
             return
         }
+        
+        // --- [V1.3.0] 新增：滚轮滑块位置设置 ---
+        if (scrollSliderPosSelecting.current) {
+            setConfig(produce(draft => {
+                draft.SCROLL_SLIDER.POS = [ x, y ]
+            }))
+            scrollSliderPosSelecting.current = false
+            return
+        }
+        // --- [V1.3.0] 结束 ---
 
 
         if (key !== null) {
@@ -379,16 +422,32 @@ export default function ConfigManager() {
         const [range, setRange] = useState(config["WHEEL"]["RANGE"] * 100)
         const [shiftRange, setShiftRange] = useState(config["WHEEL"]["SHIFT_RANGE"] * 100)
 
+        // [V1.3.0] 滚轮滑块按钮状态
+        const [scrollSliderSetPosButtonDisabled, setScrollSliderSetPosButtonDisabled] = useState(false)
+
         const [setPosButtonDisabled, setSetPosButtonDisabled] = useState(false)
         const readyToSetPos = () => {
             wheelPosSelecting.current = true;
             setSetPosButtonDisabled(true)
         }
+
+        // [V1.3.0] 滚轮滑块设置位置
+        const readyToSetScrollSliderPos = () => {
+            scrollSliderPosSelecting.current = true;
+            setScrollSliderSetPosButtonDisabled(true);
+        }
+
         const imgClickListener = (e) => {
             if (wheelPosSelecting.current) {
                 setConfig(produce(draft => { draft.WHEEL.POS = [e.detail.x, e.detail.y] }))
                 wheelPosSelecting.current = false
                 setSetPosButtonDisabled(false)
+            }
+            // [V1.3.0] 滚轮滑块
+            if (scrollSliderPosSelecting.current) {
+                setConfig(produce(draft => { draft.SCROLL_SLIDER.POS = [e.detail.x, e.detail.y] }))
+                scrollSliderPosSelecting.current = false
+                setScrollSliderSetPosButtonDisabled(false)
             }
         }
 
@@ -399,6 +458,90 @@ export default function ConfigManager() {
                 window.removeEventListener('imgOnNoKeyClick', imgClickListener)
             }
         }, [])
+
+        // --- [修改 V1.2.5] 曲线设置的复用组件 (增加 freqMax 属性) ---
+        // --- [修改 V1.3.3] 修复 CurveSettings, 严格遵循 V1.3.0 的扁平 SCROLL_SLIDER 结构 ---
+        const CurveSettings = ({ curveType, freqMax = 30, configPath }) => { 
+            const curveNameMap = {
+                "STAR_CURVE": "恒星曲线",
+                "PLANET_CURVE": "行星曲线",
+                "CURVE": "路径曲线" // [V1.3.0] 滚轮滑块的曲线
+            }
+            const curveLabel = curveNameMap[curveType] || "曲线";
+            
+            // [V1.3.3] 判定是否是滚轮滑块
+            const isScrollSliderCurve = (configPath === "SCROLL_SLIDER" && curveType === "CURVE");
+            
+            // [V1.3.3] 动态获取数据
+            let curveData;
+            let curveEnable;
+            let curveAmount;
+            let curveFrequency;
+
+            if (isScrollSliderCurve) {
+                // 滚轮滑块 (扁平)
+                curveData = config.SCROLL_SLIDER;
+                curveEnable = curveData.CURVE_ENABLE;
+                curveAmount = curveData.CURVE_AMOUNT;
+                // V1.3.0 JSON 中没有 frequency, 设为 0
+                curveFrequency = 0.0; 
+            } else {
+                // 轮盘 (嵌套)
+                curveData = config.WHEEL[curveType];
+                curveEnable = curveData.ENABLE;
+                curveAmount = curveData.CURVE_AMOUNT;
+                curveFrequency = curveData.CURVE_FREQUENCY;
+            }
+
+            // [V1.3.3] 动态设置
+            const setCurveConfig = (key, value) => {
+                setConfig(produce(draft => {
+                    if (isScrollSliderCurve) {
+                        // 滚轮滑块 (扁平)
+                        draft.SCROLL_SLIDER[key] = value;
+                    } else {
+                        // 轮盘 (嵌套)
+                        draft.WHEEL[curveType][key] = value;
+                    }
+                }))
+            }
+
+            return (
+                <>
+                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 2 }}>
+                        <Typography gutterBottom sx={{ minWidth: "100px" }}>
+                            {curveLabel}
+                        </Typography>
+                        <Switch
+                            checked={curveEnable}
+                            onChange={() => setCurveConfig(isScrollSliderCurve ? "CURVE_ENABLE" : "ENABLE", !curveEnable)}
+                        />
+                    </Grid>
+                    {/* 曲线幅度 (通用) */}
+                    <SliderWithInput
+                        label={`${curveLabel}幅度`}
+                        disabled={!curveEnable}
+                        value={curveAmount * 100} // %
+                        min={0} max={5} step={0.1}
+                        onChange={(value) => setCurveConfig(isScrollSliderCurve ? "CURVE_AMOUNT" : "CURVE_AMOUNT", Number(value) / 100)}
+                    />
+                    {/* 曲线频率 (仅轮盘) */}
+                    {!isScrollSliderCurve && (
+                        <SliderWithInput
+                            label={`${curveLabel}频率`}
+                            disabled={!curveEnable}
+                            value={curveFrequency} // Hz
+                            min={0.1} 
+                            max={freqMax} // [V1.2.5] 使用 freqMax 属性
+                            step={0.1}
+                            onChange={(value) => setCurveConfig("CURVE_FREQUENCY", Number(value))}
+                        />
+                    )}
+                </>
+            );
+        };
+        // --- [修改 V1.3.3] 曲线设置组件结束 ---
+
 
         return <Paper sx={{
             width: "370px",
@@ -555,8 +698,8 @@ export default function ConfigManager() {
                 {/* --- [新 V1.1.1] 按键抖动 (随机落点) --- */}
                 <Paper sx={{ width: "100%", p: 1, marginTop: "10px" }}>
                     <Grid container direction="row" justifyContent="flex-start" alignItems="center">
-                        <Typography gutterBottom sx={{minWidth: "160px"}}>
-                            按键抖动 (随机落点)
+                        <Typography gutterBottom sx={{ minWidth: "160px" }}>
+                            按键随机落点
                         </Typography>
                         <Switch
                             checked={config.KEY_JITTER.ENABLE}
@@ -574,7 +717,7 @@ export default function ConfigManager() {
                             setConfig(produce(draft => { draft.KEY_JITTER.AMOUNT = Number(value) / 100; })) // Convert % back to ratio
                         }}
                     />
-                    <Typography variant="caption" sx={{marginLeft: "10px"}}>(0.3% 约 10 像素 @ 3200px 宽)</Typography>
+                    <Typography variant="caption" sx={{ marginLeft: "10px" }}>(0.3% 约 10 像素 @ 3200px 宽)</Typography>
                 </Paper>
                 {/* --- [新 V1.1.1] 结束 --- */}
 
@@ -608,31 +751,124 @@ export default function ConfigManager() {
                 </Grid>
 
 
-                {/* [修改 V1.0.0] 视角设置 */}
-                <Grid
-                    container
-                    direction="row"
-                    justifyContent="flex-start"
-                    alignItems="center"
-                    sx={{ height: "50px" }}
-                >
-                    <a>视角灵敏度&nbsp;X:</a>
-                    <CostumedInput
-                        key={config["MOUSE"]["SPEED"][0]} // 强制重渲染
-                        defaultValue={config["MOUSE"]["SPEED"][0]}
-                        onCommit={(value) => {
-                        setConfig(produce(draft => { draft.MOUSE.SPEED[0] = Number(value); }))
-                    }} width="40px" />
-                    <a>&nbsp;Y:</a>
-                    <CostumedInput
-                        key={config["MOUSE"]["SPEED"][1]} // 强制重渲染
-                        defaultValue={config["MOUSE"]["SPEED"][1]}
-                        onCommit={(value) => {
-                        setConfig(produce(draft => { draft.MOUSE.SPEED[1] = Number(value); }))
-                    }} width="40px" />
-                    <a>&emsp;中心:</a>
-                    <Button onClick={() => { viewCenterSetting.current = true }} disabled={setPosButtonDisabled} sx={{ height: "30px", marginLeft: "5px" }} variant="outlined"  >重设</Button>
-                </Grid>
+                {/* [修改 V1.3.5] 视角设置 (添加 P2 和 P5 UI) */}
+                <Paper sx={{ width: "100%", p: 1, marginTop: "10px" }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                        视角设置
+                    </Typography>
+                    <Grid
+                        container
+                        direction="row"
+                        justifyContent="flex-start"
+                        alignItems="center"
+                        sx={{ height: "50px" }}
+                    >
+                        <a>视角灵敏度&nbsp;X:</a>
+                        <CostumedInput
+                            key={config["MOUSE"]["SPEED"][0]} // 强制重渲染
+                            defaultValue={config["MOUSE"]["SPEED"][0]}
+                            onCommit={(value) => {
+                                setConfig(produce(draft => { draft.MOUSE.SPEED[0] = Number(value); }))
+                            }} width="40px" />
+                        <a>&nbsp;Y:</a>
+                        <CostumedInput
+                            key={config["MOUSE"]["SPEED"][1]} // 强制重渲染
+                            defaultValue={config["MOUSE"]["SPEED"][1]}
+                            onCommit={(value) => {
+                                setConfig(produce(draft => { draft.MOUSE.SPEED[1] = Number(value); }))
+                            }} width="40px" />
+                        <a>&emsp;中心:</a>
+                        <Button onClick={() => { viewCenterSetting.current = true }} disabled={setPosButtonDisabled || scrollSliderPosSelecting.current} sx={{ height: "30px", marginLeft: "5px" }} variant="outlined"  >重设</Button>
+                    </Grid>
+
+                    {/* --- [修改 V1.3.5] P5: 视角自动释放 (开关 + 输入框) --- */}
+                    <Grid
+                        container
+                        direction="row"
+                        justifyContent="flex-start"
+                        alignItems="center"
+                        sx={{ height: "50px" }}
+                    >
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            视角自动释放
+                        </Typography>
+                        <Switch
+                            checked={config.MOUSE.VIEW_AUTO_RELEASE_ENABLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.MOUSE.VIEW_AUTO_RELEASE_ENABLE = !draft.MOUSE.VIEW_AUTO_RELEASE_ENABLE; }))
+                            }}
+                        />
+                        <CostumedInput
+                            key={config.MOUSE.VIEW_AUTO_RELEASE_MS + (config.MOUSE.VIEW_AUTO_RELEASE_ENABLE ? '' : '-disabled')} // 强制重渲染
+                            defaultValue={config.MOUSE.VIEW_AUTO_RELEASE_MS}
+                            disabled={!config.MOUSE.VIEW_AUTO_RELEASE_ENABLE}
+                            onCommit={(value) => {
+                                setConfig(produce(draft => { draft.MOUSE.VIEW_AUTO_RELEASE_MS = Number(value); }))
+                            }} width="50px" />
+                        <a>&nbsp;ms</a>
+                    </Grid>
+                    {/* --- [修改 V1.3.5] P5 结束 --- */}
+                    
+                    
+                    {/* --- [新增 V1.3.0] 视角重置半径 --- */}
+                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 1 }}>
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            启用视角重置半径
+                        </Typography>
+                        <Switch
+                            checked={config.MOUSE.VIEW_RESET_RADIUS_ENABLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.MOUSE.VIEW_RESET_RADIUS_ENABLE = !draft.MOUSE.VIEW_RESET_RADIUS_ENABLE; }))
+                            }}
+                        />
+                    </Grid>
+                    <SliderWithInput
+                        label="视角重置半径 (%)"
+                        disabled={!config.MOUSE.VIEW_RESET_RADIUS_ENABLE}
+                        value={config.MOUSE.VIEW_RESET_RADIUS * 100} // %
+                        min={1} max={50} step={0.5}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.MOUSE.VIEW_RESET_RADIUS = Number(value) / 100; }))
+                        }}
+                    />
+
+                    {/* --- [新增 V1.3.5] P2: 重置圆环厚度 --- */}
+                    <SliderWithInput
+                        label="重置圆环厚度 (%)"
+                        disabled={!config.MOUSE.VIEW_RESET_RADIUS_ENABLE}
+                        value={config.MOUSE.VIEW_RESET_RADIUS_THICKNESS * 100} // %
+                        min={0.1} max={5} step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.MOUSE.VIEW_RESET_RADIUS_THICKNESS = Number(value) / 100; }))
+                        }}
+                    />
+                    {/* --- [新增 V1.3.5] P2 结束 --- */}
+
+
+                    {/* --- [新增 V1.3.0] 随机视角重置范围 --- */}
+                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 1 }}>
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            随机视角重置范围
+                        </Typography>
+                        <Switch
+                            checked={config.MOUSE.VIEW_RANDOM_RESET_ENABLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.MOUSE.VIEW_RANDOM_RESET_ENABLE = !draft.MOUSE.VIEW_RANDOM_RESET_ENABLE; }))
+                            }}
+                        />
+                    </Grid>
+                    <SliderWithInput
+                        label="随机重置半径 (%)"
+                        disabled={!config.MOUSE.VIEW_RANDOM_RESET_ENABLE}
+                        value={config.MOUSE.VIEW_RANDOM_RESET_RADIUS * 100} // %
+                        min={0.1} max={5} step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.MOUSE.VIEW_RANDOM_RESET_RADIUS = Number(value) / 100; }))
+                        }}
+                    />
+                </Paper>
+                {/* --- [修改 V1.3.5] 视角设置结束 --- */}
+
 
                 <Grid
                     container
@@ -703,7 +939,7 @@ export default function ConfigManager() {
                         height: "50px",
                     }}>
                     <a>{`左摇杆中心位置:(${parseInt(config["WHEEL"]["POS"][0] * config["SCREEN"]["SIZE"][0])} , ${parseInt(config["WHEEL"]["POS"][1] * config["SCREEN"]["SIZE"][1])})`} </a>
-                    <Button onClick={readyToSetPos} disabled={setPosButtonDisabled} sx={{ height: "30px", marginLeft: "10px" }} variant="outlined"  >重设</Button>
+                    <Button onClick={readyToSetPos} disabled={setPosButtonDisabled || scrollSliderPosSelecting.current} sx={{ height: "30px", marginLeft: "10px" }} variant="outlined"  >重设</Button>
 
                 </Grid>
 
@@ -713,7 +949,8 @@ export default function ConfigManager() {
                     justifyContent="flex-start"
                     alignItems="center"
                     sx={{
-                        height: "150px",
+                        // [修改 V1.2.0] 增加高度以容纳新开关
+                        height: "170px",
                     }}>
 
                     <Typography gutterBottom>
@@ -748,15 +985,32 @@ export default function ConfigManager() {
                         }}
                     />
 
-                    <Typography gutterBottom>
-                        {config["WHEEL"]["SHIFT_RANGE_SWITCH_ENABLE"] ? "shift切换模式" : "shift长按模式"}
-                    </Typography>
-                    <Switch
-                        checked={config["WHEEL"]["SHIFT_RANGE_SWITCH_ENABLE"]}
-                        onChange={() => {
-                            setConfig(produce(draft => { draft.WHEEL.SHIFT_RANGE_SWITCH_ENABLE = !draft.WHEEL.SHIFT_RANGE_SWITCH_ENABLE; }))
-                        }}
+                    {/* --- [修改 V1.2.0] 新 Shift 逻辑 --- */}
+                    <FormControlLabel
+                        control={<Switch
+                            checked={config.WHEEL.SHIFT_PRESS_TOGGLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.WHEEL.SHIFT_PRESS_TOGGLE = !draft.WHEEL.SHIFT_PRESS_TOGGLE; }))
+                            }}
+                            disabled={!config.WHEEL.SHIFT_RANGE_ENABLE}
+                            size="small"
+                            sx={{ ml: 2 }}
+                        />}
+                        label={<Typography variant="body2" sx={{ fontSize: "0.9rem" }}>摁下切换</Typography>}
                     />
+                    <FormControlLabel
+                        control={<Switch
+                            checked={config.WHEEL.SHIFT_RELEASE_TOGGLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.WHEEL.SHIFT_RELEASE_TOGGLE = !draft.WHEEL.SHIFT_RELEASE_TOGGLE; }))
+                            }}
+                            disabled={!config.WHEEL.SHIFT_RANGE_ENABLE}
+                            size="small"
+                            sx={{ ml: 2 }}
+                        />}
+                        label={<Typography variant="body2" sx={{ fontSize: "0.9rem" }}>抬起切换</Typography>}
+                    />
+                    {/* --- [修改 V1.2.0] 移除旧的 SHIFT_RANGE_SWITCH_ENABLE --- */}
 
                     <Grid container spacing={2}>
                         <Grid item xs>
@@ -776,44 +1030,13 @@ export default function ConfigManager() {
 
                 </Grid>
 
-                {/* --- [修改 V1.1.0] 轮盘高级设置 (重构) --- */}
+                {/* --- [修改 V1.2.3] 轮盘高级设置 (重构) --- */}
                 <Paper sx={{ width: "100%", p: 1, marginTop: "10px" }}>
                     <Typography variant="subtitle1" gutterBottom>
-                        轮盘高级设置 (V1.1.0)
+                        轮盘高级设置 (V1.2.5)
                     </Typography>
 
-                    {/* 路径抖动 (需求 #2, #3) */}
-                     <Grid container direction="row" justifyContent="flex-start" alignItems="center">
-                        <Typography gutterBottom sx={{minWidth: "120px"}}>
-                            路径抖动 (偏移)
-                        </Typography>
-                        <Switch
-                            checked={config.WHEEL.PATH_JITTER.ENABLE}
-                            onChange={() => {
-                                setConfig(produce(draft => { draft.WHEEL.PATH_JITTER.ENABLE = !draft.WHEEL.PATH_JITTER.ENABLE; }))
-                            }}
-                        />
-                    </Grid>
-                    <SliderWithInput
-                        label="路径抖动幅度"
-                        disabled={!config.WHEEL.PATH_JITTER.ENABLE}
-                        value={config.WHEEL.PATH_JITTER.AMOUNT * 100} // %
-                        min={0} max={5} step={0.1}
-                        onChange={(value) => {
-                            setConfig(produce(draft => { draft.WHEEL.PATH_JITTER.AMOUNT = Number(value) / 100; }))
-                        }}
-                    />
-                    {/* [修改 V1.1.0] 路径抖动频率 */}
-                     <SliderWithInput
-                        label="路径抖动频率"
-                        disabled={!config.WHEEL.PATH_JITTER.ENABLE}
-                        value={config.WHEEL.PATH_JITTER.FREQUENCY} // Hz
-                        min={0.1} max={30} step={0.1}
-                        onChange={(value) => {
-                            setConfig(produce(draft => { draft.WHEEL.PATH_JITTER.FREQUENCY = Number(value); }))
-                        }}
-                    />
-
+                    {/* --- [修改 V1.2.3] 移除 PATH_JITTER --- */}
 
                     {/* 轮盘移动平滑度 */}
                     <SliderWithInput
@@ -824,42 +1047,76 @@ export default function ConfigManager() {
                             setConfig(produce(draft => { draft.WHEEL.STEP_SPEED = Number(value); }))
                         }}
                     />
-                    <Typography variant="caption" sx={{marginLeft: "10px"}}>(原版 60, 值越小越平滑)</Typography>
+                    <Typography variant="caption" sx={{ marginLeft: "10px" }}>(原版 60, 值越小越平滑)</Typography>
 
-                    {/* 恒星抖动 (需求 #3, #4) */}
+
+                    {/* --- [修改 V1.2.3] 恒星动态速度 (重命名) --- */}
                     <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 2 }}>
-                        <Typography gutterBottom sx={{minWidth: "120px"}}>
-                            恒星抖动 (Star)
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            恒星动态速度
                         </Typography>
                         <Switch
-                            checked={config.WHEEL.STAR_JITTER.ENABLE}
+                            checked={config.WHEEL.STAR_DYNAMIC_SPEED.ENABLE}
                             onChange={() => {
-                                setConfig(produce(draft => { draft.WHEEL.STAR_JITTER.ENABLE = !draft.WHEEL.STAR_JITTER.ENABLE; }))
+                                setConfig(produce(draft => { draft.WHEEL.STAR_DYNAMIC_SPEED.ENABLE = !draft.WHEEL.STAR_DYNAMIC_SPEED.ENABLE; }))
                             }}
                         />
                     </Grid>
                     <SliderWithInput
-                        label="恒星抖动幅度"
-                        disabled={!config.WHEEL.STAR_JITTER.ENABLE}
-                        value={config.WHEEL.STAR_JITTER.AMOUNT * 100} // %
-                        min={0} max={5} step={0.1}
+                        label="最慢速度"
+                        disabled={!config.WHEEL.STAR_DYNAMIC_SPEED.ENABLE}
+                        value={config.WHEEL.STAR_DYNAMIC_SPEED.MIN_SPEED}
+                        min={0.1}
+                        max={config.WHEEL.STEP_SPEED} // 动态绑定最大值
+                        step={0.1}
                         onChange={(value) => {
-                            setConfig(produce(draft => { draft.WHEEL.STAR_JITTER.AMOUNT = Number(value) / 100; }))
+                            setConfig(produce(draft => { draft.WHEEL.STAR_DYNAMIC_SPEED.MIN_SPEED = Number(value); }))
                         }}
                     />
-                     <SliderWithInput
-                        label="恒星抖动频率"
-                        disabled={!config.WHEEL.STAR_JITTER.ENABLE}
-                        value={config.WHEEL.STAR_JITTER.FREQUENCY} // Hz
-                        min={0.1} max={30} step={0.1} // [修改 V1.1.0] 支持小数频率
+                    <SliderWithInput
+                        label="速度周期频率"
+                        disabled={!config.WHEEL.STAR_DYNAMIC_SPEED.ENABLE}
+                        value={config.WHEEL.STAR_DYNAMIC_SPEED.FREQUENCY} // Hz
+                        min={0.1} max={10} step={0.1}
                         onChange={(value) => {
-                            setConfig(produce(draft => { draft.WHEEL.STAR_JITTER.FREQUENCY = Number(value); }))
+                            setConfig(produce(draft => { draft.WHEEL.STAR_DYNAMIC_SPEED.FREQUENCY = Number(value); }))
                         }}
                     />
+                    {/* --- [修改 V1.2.3] 恒星动态速度 结束 --- */}
 
-                    {/* 行星转圈 (需求 #1, #3, #4) */}
+
+                    {/* --- [新增 V1.2.1] 独立随机落点 (保留) --- */}
                     <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 2 }}>
-                        <Typography gutterBottom sx={{minWidth: "120px"}}>
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            随机落点
+                        </Typography>
+                        <Switch
+                            checked={config.WHEEL.RANDOM_START.ENABLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.WHEEL.RANDOM_START.ENABLE = !draft.WHEEL.RANDOM_START.ENABLE; }))
+                            }}
+                        />
+                    </Grid>
+                    <SliderWithInput
+                        label="落点半径 (%)"
+                        disabled={!config.WHEEL.RANDOM_START.ENABLE}
+                        value={config.WHEEL.RANDOM_START.RADIUS * 100} // %
+                        min={0} max={10} step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.WHEEL.RANDOM_START.RADIUS = Number(value) / 100; }))
+                        }}
+                    />
+                    {/* --- [新增 V1.2.1] 独立随机落点 结束 --- */}
+
+                    {/* --- [修改 V1.2.3] 移除 JITTER_SMOOTH_SPEED --- */}
+
+
+                    {/* --- [修改 V1.2.5] 传入 freqMax=30 --- */}
+                    <CurveSettings curveType="STAR_CURVE" freqMax={30} />
+
+                    {/* 行星转圈 */}
+                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 2 }}>
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
                             行星转圈 (Planet)
                         </Typography>
                         <Switch
@@ -868,21 +1125,9 @@ export default function ConfigManager() {
                                 setConfig(produce(draft => { draft.WHEEL.WHEEL_PLANET.ENABLE = !draft.WHEEL.WHEEL_PLANET.ENABLE; }))
                             }}
                         />
-                         <FormControlLabel
-                            control={<Switch
-                                checked={config.WHEEL.WHEEL_PLANET.RANDOM_START_ENABLE}
-                                onChange={() => {
-                                    setConfig(produce(draft => { draft.WHEEL.WHEEL_PLANET.RANDOM_START_ENABLE = !draft.WHEEL.WHEEL_PLANET.RANDOM_START_ENABLE; }))
-                                }}
-                                disabled={!config.WHEEL.WHEEL_PLANET.ENABLE}
-                                size="small"
-                                sx={{ ml: 2 }}
-                            />}
-                            label={<Typography variant="body2" sx={{ fontSize: "0.9rem" }}>随机出发点</Typography>}
-                        />
                     </Grid>
                     <SliderWithInput
-                        label="行星半径" // (需求 #4)
+                        label="行星半径"
                         disabled={!config.WHEEL.WHEEL_PLANET.ENABLE}
                         value={config.WHEEL.WHEEL_PLANET.RADIUS * 100} // %
                         min={0} max={10} step={0.1}
@@ -890,7 +1135,7 @@ export default function ConfigManager() {
                             setConfig(produce(draft => { draft.WHEEL.WHEEL_PLANET.RADIUS = Number(value) / 100; }))
                         }}
                     />
-                     <SliderWithInput
+                    <SliderWithInput
                         label="行星速度"
                         disabled={!config.WHEEL.WHEEL_PLANET.ENABLE}
                         value={config.WHEEL.WHEEL_PLANET.SPEED}
@@ -900,38 +1145,152 @@ export default function ConfigManager() {
                         }}
                     />
 
-                    {/* 行星抖动 (需求 #3, #4) */}
-                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 2 }}>
-                        <Typography gutterBottom sx={{minWidth: "120px"}}>
-                            行星抖动
+                    {/* --- [新增 V1.2.0] 行星动态速度 (保留) --- */}
+                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 2, ml: 2 }}>
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            行星动态速度
                         </Typography>
                         <Switch
-                            checked={config.WHEEL.PLANET_JITTER.ENABLE}
+                            checked={config.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.ENABLE}
                             onChange={() => {
-                                setConfig(produce(draft => { draft.WHEEL.PLANET_JITTER.ENABLE = !draft.WHEEL.PLANET_JITTER.ENABLE; }))
+                                setConfig(produce(draft => { draft.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.ENABLE = !draft.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.ENABLE; }))
+                            }}
+                            disabled={!config.WHEEL.WHEEL_PLANET.ENABLE}
+                        />
+                    </Grid>
+                    <SliderWithInput
+                        label="最慢速度"
+                        disabled={!config.WHEEL.WHEEL_PLANET.ENABLE || !config.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.ENABLE}
+                        value={config.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.MIN_SPEED}
+                        min={0.1}
+                        max={config.WHEEL.WHEEL_PLANET.SPEED} // 动态绑定最大值
+                        step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.MIN_SPEED = Number(value); }))
+                        }}
+                    />
+                    <SliderWithInput
+                        label="速度周期频率"
+                        disabled={!config.WHEEL.WHEEL_PLANET.ENABLE || !config.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.ENABLE}
+                        value={config.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.FREQUENCY} // Hz
+                        min={0.1} max={10} step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED.FREQUENCY = Number(value); }))
+                        }}
+                    />
+                    {/* --- [新增 V1.2.0] 行星动态速度 结束 --- */}
+
+
+                    {/* --- [修改 V1.2.5] 传入 freqMax=10 --- */}
+                    <CurveSettings curveType="PLANET_CURVE" freqMax={10} />
+
+                </Paper>
+                {/* --- [修改 V1.2.3] 轮盘高级设置结束 --- */}
+
+
+                {/* --- [新增 V1.3.0] 滚轮滑块设置 --- */}
+                <Paper sx={{ width: "100%", p: 1, marginTop: "10px" }}>
+                    <Grid container direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="subtitle1" gutterBottom>
+                            滚轮滑块设置
+                        </Typography>
+                        <Switch
+                            checked={config.SCROLL_SLIDER.ENABLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.SCROLL_SLIDER.ENABLE = !draft.SCROLL_SLIDER.ENABLE; }))
                             }}
                         />
                     </Grid>
-                     <SliderWithInput
-                        label="行星抖动幅度"
-                        disabled={!config.WHEEL.PLANET_JITTER.ENABLE}
-                        value={config.WHEEL.PLANET_JITTER.AMOUNT * 100} // %
-                        min={0} max={5} step={0.1}
+                    <Grid
+                        container
+                        direction="row"
+                        justifyContent="flex-start"
+                        alignItems="center"
+                        sx={{ height: "50px" }}
+                    >
+                        <a>{`中心位置:(${parseInt(config.SCROLL_SLIDER.POS[0] * config.SCREEN.SIZE[0])} , ${parseInt(config.SCROLL_SLIDER.POS[1] * config.SCREEN.SIZE[1])})`} </a>
+                        <Button 
+                            onClick={readyToSetScrollSliderPos} 
+                            disabled={scrollSliderSetPosButtonDisabled || setPosButtonDisabled || viewCenterSetting.current} 
+                            sx={{ height: "30px", marginLeft: "10px" }} 
+                            variant="outlined"
+                        >
+                            重设
+                        </Button>
+                    </Grid>
+                    <SliderWithInput
+                        label="上滑长度 (%)"
+                        disabled={!config.SCROLL_SLIDER.ENABLE}
+                        value={config.SCROLL_SLIDER.LENGTH_UP * 100} // %
+                        min={1} max={50} step={0.5}
                         onChange={(value) => {
-                            setConfig(produce(draft => { draft.WHEEL.PLANET_JITTER.AMOUNT = Number(value) / 100; }))
+                            setConfig(produce(draft => { draft.SCROLL_SLIDER.LENGTH_UP = Number(value) / 100; }))
                         }}
                     />
-                     <SliderWithInput
-                        label="行星抖动频率"
-                        disabled={!config.WHEEL.PLANET_JITTER.ENABLE}
-                        value={config.WHEEL.PLANET_JITTER.FREQUENCY} // Hz
-                        min={0.1} max={30} step={0.1} // [修改 V1.1.0] 支持小数频率
+                    <SliderWithInput
+                        label="下滑长度 (%)"
+                        disabled={!config.SCROLL_SLIDER.ENABLE}
+                        value={config.SCROLL_SLIDER.LENGTH_DOWN * 100} // %
+                        min={1} max={50} step={0.5}
                         onChange={(value) => {
-                            setConfig(produce(draft => { draft.WHEEL.PLANET_JITTER.FREQUENCY = Number(value); }))
+                            setConfig(produce(draft => { draft.SCROLL_SLIDER.LENGTH_DOWN = Number(value) / 100; }))
                         }}
                     />
+                    <Grid
+                        container
+                        direction="row"
+                        justifyContent="flex-start"
+                        alignItems="center"
+                        sx={{ height: "50px" }}
+                    >
+                        <a>非重置时间:</a>
+                        <CostumedInput
+                            key={config.SCROLL_SLIDER.TIMEOUT_S} // 强制重渲染
+                            defaultValue={config.SCROLL_SLIDER.TIMEOUT_S}
+                            onCommit={(value) => {
+                                setConfig(produce(draft => { draft.SCROLL_SLIDER.TIMEOUT_S = Number(value); }))
+                            }} width="50px" />
+                        <a>&nbsp;s</a>
+                    </Grid>
+                    <SliderWithInput
+                        label="滚动速度"
+                        disabled={!config.SCROLL_SLIDER.ENABLE}
+                        value={config.SCROLL_SLIDER.SPEED}
+                        min={0.1} max={10} step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.SCROLL_SLIDER.SPEED = Number(value); }))
+                        }}
+                    />
+                    <Grid container direction="row" justifyContent="flex-start" alignItems="center" sx={{ mt: 1 }}>
+                        <Typography gutterBottom sx={{ minWidth: "120px" }}>
+                            随机范围出现
+                        </Typography>
+                        <Switch
+                            checked={config.SCROLL_SLIDER.RANDOM_START_ENABLE}
+                            onChange={() => {
+                                setConfig(produce(draft => { draft.SCROLL_SLIDER.RANDOM_START_ENABLE = !draft.SCROLL_SLIDER.RANDOM_START_ENABLE; }))
+                            }}
+                            disabled={!config.SCROLL_SLIDER.ENABLE}
+                        />
+                    </Grid>
+                    <SliderWithInput
+                        label="随机半径 (%)"
+                        disabled={!config.SCROLL_SLIDER.ENABLE || !config.SCROLL_SLIDER.RANDOM_START_ENABLE}
+                        value={config.SCROLL_SLIDER.RANDOM_START_RADIUS * 100} // %
+                        min={0.1} max={5} step={0.1}
+                        onChange={(value) => {
+                            setConfig(produce(draft => { draft.SCROLL_SLIDER.RANDOM_START_RADIUS = Number(value) / 100; }))
+                        }}
+                    />
+                    {/* [V1.3.3] 滚轮滑块的曲线设置 (已修复) */}
+                    <CurveSettings 
+                        curveType="CURVE" 
+                        freqMax={10} 
+                        configPath="SCROLL_SLIDER" // 传入 SCROLL_SLIDER 作为路径
+                    />
+
                 </Paper>
-                {/* --- [修改 V1.1.0] 轮盘高级设置结束 --- */}
+                {/* --- [新增 V1.3.0] 滚轮滑块设置结束 --- */}
 
 
             </Grid>
@@ -1064,6 +1423,100 @@ export default function ConfigManager() {
         </div>
     }
 
+    // --- [新增 V1.3.0] 背包键 UI ---
+    const Type_backpack_toggle = ({ data }) => {
+        const waitingForClick = useRef(false)
+        const [addButtonDisabled, setAddButtonDisabled] = useState(false)
+        const readyToAdd = () => { waitingForClick.current = true; setAddButtonDisabled(true) }
+
+        const setKeyPoint = (x, y) => {
+            setConfig(produce(draft => { draft.KEY_MAPS[data["KEY"]].POS_B = [x, y] }))
+        }
+
+        const imgClickListener = (e) => {
+            if (waitingForClick.current) {
+                setKeyPoint(e.detail.x, e.detail.y)
+                waitingForClick.current = false;
+                setAddButtonDisabled(false)
+            }
+        }
+        useEffect(() => {
+            window.addEventListener('imgOnNoKeyClick', imgClickListener)
+            return () => {
+                window.removeEventListener('imgOnNoKeyClick', imgClickListener)
+            }
+        }, [])
+
+        const posA = data.POS;
+        const posB = data.POS_B;
+
+        return <div>
+            <Grid container >
+                <Grid item xs={12}><Button onClick={readyToAdd} disabled={addButtonDisabled} variant="outlined" sx={{
+                    height: "30px",
+                    width: "150px",
+                }}  >设置第二次位置</Button></Grid>
+            </Grid>
+            <div style={{ display: "flex" }}>
+                <a>A&emsp;{`(${getDisplayValueX(posA[0])} , ${getDisplayValueY(posA[1])})`}</a>
+            </div>
+            <div style={{ display: "flex" }}>
+                <a>B&emsp;{`(${getDisplayValueX(posB[0])} , ${getDisplayValueY(posB[1])})`}</a>
+            </div>
+        </div>
+    }
+    
+    // --- [新增 V1.3.0] 依次触摸点 UI ---
+    const Type_sequential_press = ({ data }) => {
+        const waitingForClick = useRef(false)
+        const [addButtonDisabled, setAddButtonDisabled] = useState(false)
+        const readyToAdd = () => { waitingForClick.current = true; setAddButtonDisabled(true) }
+
+        const addKeyPoint = (x, y) => {
+            setConfig(produce(draft => { draft.KEY_MAPS[data["KEY"]].POS_S.push([x, y]) }))
+        }
+
+        const removeKeyPoint = (index) => {
+            setConfig(produce(draft => { draft.KEY_MAPS[data["KEY"]].POS_S.splice(index, 1) }))
+        }
+
+        const imgClickListener = (e) => {
+            if (waitingForClick.current) {
+                addKeyPoint(e.detail.x, e.detail.y)
+                waitingForClick.current = false;
+                setAddButtonDisabled(false)
+            }
+        }
+        useEffect(() => {
+            window.addEventListener('imgOnNoKeyClick', imgClickListener)
+            return () => {
+                window.removeEventListener('imgOnNoKeyClick', imgClickListener)
+            }
+        }, [])
+        
+        // 第一个点是按键自己的 POS
+        const allPoints = [data.POS, ...(data.POS_S || [])];
+
+        return <div>
+            <Grid container >
+                <Grid item xs={6}><Button onClick={readyToAdd} disabled={addButtonDisabled} variant="outlined" sx={{
+                    height: "30px",
+                    width: "105px",
+                }}  >添加后续点</Button></Grid>
+            </Grid>
+            {
+                allPoints.map((pos, index) => <div key={index} style={{ display: "flex" }}>
+                    <a>{index+1}&emsp;{`(${getDisplayValueX(pos[0])} , ${getDisplayValueY(pos[1])})`}</a>
+                    {/* 第一个点 (index 0) 不允许删除 */}
+                    {index > 0 && <IconButton onClick={() => { removeKeyPoint(index - 1) }}> 
+                        <HighlightOffIcon />
+                    </IconButton>}
+                </div>
+                )
+            }
+        </div>
+    }
+    // --- [新增 V1.3.0] 结束 ---
 
 
     const KeySettingRender = ({ data }) => {
@@ -1071,29 +1524,23 @@ export default function ConfigManager() {
 
 
         const handleChange = (e) => {
+            // [V1.3.0] 提取当前位置 (或设置默认)
+            let currentPos = [0.4, 0.4];
+            if (Object.keys(config["KEY_MAPS"][data["KEY"]]).indexOf("POS") !== -1) {
+                currentPos = config["KEY_MAPS"][data["KEY"]]["POS"];
+            }
+
             if (e.target.value === "CLICK") {
                 setConfig(produce(draft => {
-                    if (Object.keys(config["KEY_MAPS"][data["KEY"]]).indexOf("POS") !== -1) {
-                        draft.KEY_MAPS[data["KEY"]] = { "TYPE": "CLICK", "POS": config["KEY_MAPS"][data["KEY"]]["POS"], "INTERVAL": [18] }
-                    } else {
-                        draft.KEY_MAPS[data["KEY"]] = { "TYPE": "CLICK", "POS": [0.4, 0.4], "INTERVAL": [18] }
-                    }
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "CLICK", "POS": currentPos, "INTERVAL": [18] }
                 }))
             } else if (e.target.value === "PRESS") {
                 setConfig(produce(draft => {
-                    if (Object.keys(config["KEY_MAPS"][data["KEY"]]).indexOf("POS") !== -1) {
-                        draft.KEY_MAPS[data["KEY"]] = { "TYPE": "PRESS", "POS": config["KEY_MAPS"][data["KEY"]]["POS"] }
-                    } else {
-                        draft.KEY_MAPS[data["KEY"]] = { "TYPE": "PRESS", "POS": [0.4, 0.4] }
-                    }
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "PRESS", "POS": currentPos }
                 }))
             } else if (e.target.value === "AUTO_FIRE") {
                 setConfig(produce(draft => {
-                    if (Object.keys(config["KEY_MAPS"][data["KEY"]]).indexOf("POS") !== -1) {
-                        draft.KEY_MAPS[data["KEY"]] = { "TYPE": "AUTO_FIRE", "POS": config["KEY_MAPS"][data["KEY"]]["POS"], "INTERVAL": [18, 20] }
-                    } else {
-                        draft.KEY_MAPS[data["KEY"]] = { "TYPE": "AUTO_FIRE", "POS": [0.4, 0.4], "INTERVAL": [18, 20] }
-                    }
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "AUTO_FIRE", "POS": currentPos, "INTERVAL": [18, 20] }
                 }))
             } else if (e.target.value === "DRAG") {
                 setConfig(produce(draft => {
@@ -1103,8 +1550,40 @@ export default function ConfigManager() {
                 setConfig(produce(draft => {
                     draft.KEY_MAPS[data["KEY"]] = { "TYPE": "MULT_PRESS", "POS_S": [], }
                 }))
+            // --- [新增 V1.3.0] 新按键类型 ---
+            } else if (e.target.value === "SYNC_VIEW_RESET") {
+                 setConfig(produce(draft => {
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "SYNC_VIEW_RESET", "POS": currentPos }
+                }))
+            } else if (e.target.value === "CLICK_VIEW_RESET") {
+                 setConfig(produce(draft => {
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "CLICK_VIEW_RESET", "POS": currentPos }
+                }))
+            } else if (e.target.value === "BACKPACK_TOGGLE") {
+                 setConfig(produce(draft => {
+                    // 背包键需要两个位置, A (当前) 和 B (默认 B = A)
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "BACKPACK_TOGGLE", "POS": currentPos, "POS_B": currentPos }
+                }))
+            } else if (e.target.value === "CLICK_MAP_ON") {
+                 setConfig(produce(draft => {
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "CLICK_MAP_ON", "POS": currentPos, "INTERVAL": [18] } // 基于 CLICK
+                }))
+            } else if (e.target.value === "CLICK_MAP_OFF") {
+                 setConfig(produce(draft => {
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "CLICK_MAP_OFF", "POS": currentPos, "INTERVAL": [18] } // 基于 CLICK
+                }))
+            } else if (e.target.value === "SEQUENTIAL_PRESS") {
+                 setConfig(produce(draft => {
+                    // 依次触摸点需要一个 POS 数组, 第一个点是按键的 POS
+                    draft.KEY_MAPS[data["KEY"]] = { "TYPE": "SEQUENTIAL_PRESS", "POS": currentPos, "POS_S": [] }
+                }))
             }
+            // --- [新增 V1.3.0] 结束 ---
         }
+        
+        // [V1.3.0] 扩展需要显示坐标的类型
+        const posBasedTypes = ["PRESS", "AUTO_FIRE", "CLICK", "SYNC_VIEW_RESET", "CLICK_VIEW_RESET", "BACKPACK_TOGGLE", "CLICK_MAP_ON", "CLICK_MAP_OFF", "SEQUENTIAL_PRESS"];
+        const showPos = posBasedTypes.includes(data["TYPE"]);
 
         return <Grid
             container
@@ -1118,7 +1597,7 @@ export default function ConfigManager() {
                 alignItems="center"
             >
                 {
-                    data["TYPE"] === "PRESS" || data["TYPE"] === "AUTO_FIRE" || data["TYPE"] === "CLICK" ?
+                    showPos ?
                         <Grid item xs={5}><a>{`${data["KEY"]} : (${getDisplayValueX(data["POS"][0])} , ${getDisplayValueY(data["POS"][1])})`}</a></Grid> :
                         <Grid item xs={5}><a>{`${data["KEY"]} `}</a></Grid>
                 }
@@ -1136,6 +1615,14 @@ export default function ConfigManager() {
                             {!isWheel && <MenuItem value={"AUTO_FIRE"}>连发</MenuItem>}
                             <MenuItem value={"DRAG"}>滑动</MenuItem>
                             {!isWheel && <MenuItem value={"MULT_PRESS"}>多点触摸</MenuItem>}
+                            {/* --- [新增 V1.3.0] 新按键类型 --- */}
+                            {!isWheel && <MenuItem value={"SYNC_VIEW_RESET"}>同步按抬鼠标重置</MenuItem>}
+                            {!isWheel && <MenuItem value={"CLICK_VIEW_RESET"}>单点击鼠标重置</MenuItem>}
+                            {!isWheel && <MenuItem value={"BACKPACK_TOGGLE"}>背包键</MenuItem>}
+                            {!isWheel && <MenuItem value={"CLICK_MAP_ON"}>开启映射后点击</MenuItem>}
+                            {!isWheel && <MenuItem value={"CLICK_MAP_OFF"}>点击关闭映射</MenuItem>}
+                            {!isWheel && <MenuItem value={"SEQUENTIAL_PRESS"}>依次触摸点</MenuItem>}
+                            {/* --- [新增 V1.3.0] 结束 --- */}
                         </Select>
                     </FormControl>
                 </Grid>
@@ -1151,11 +1638,17 @@ export default function ConfigManager() {
             {data["TYPE"] === "AUTO_FIRE" ? <Type_auto_fire data={data} /> : null}
             {data["TYPE"] === "DRAG" ? <Type_drag data={data} /> : null}
             {data["TYPE"] === "MULT_PRESS" ? <Type_mult_press data={data} /> : null}
+            {/* --- [新增 V1.3.0] 新按键类型 UI 渲染 --- */}
+            {data["TYPE"] === "BACKPACK_TOGGLE" ? <Type_backpack_toggle data={data} /> : null}
+            {data["TYPE"] === "SEQUENTIAL_PRESS" ? <Type_sequential_press data={data} /> : null}
+            {/* [V1.3.0] 其他4个新类型不需要额外UI */}
+            {/* --- [新增 V1.3.0] 结束 --- */}
 
         </Grid>
     }
 
 
+    // --- [修改 V1.3.5] 修复 P2 和 P5 的加载逻辑 ---
     useEffect(() => {
         document.onkeydown = (e) => {
             if (e.repeat === false && window.stopPreventDefault !== true) {
@@ -1190,83 +1683,196 @@ export default function ConfigManager() {
                 setImgSize([document.getElementById("img").width, document.getElementById("img").height])
             }
         })
+
+        // --- [修复 V1.3.2] 将这两个变量添加回来 ---
+        // V1.2.3 默认 "曲线" 配置
+        const defaultStarCurve = {
+            ENABLE: false,
+            CURVE_AMOUNT: 0.002,
+            CURVE_FREQUENCY: 1.0,
+        };
+        const defaultPlanetCurve = {
+            ENABLE: false,
+            CURVE_AMOUNT: 0.005,
+            CURVE_FREQUENCY: 1.0,
+        };
+        // --- [修复 V1.3.2] 结束 ---
+        
+        // [V1.3.5] 滚轮滑块默认 (扁平)
+        const defaultScrollSlider = {
+            "ENABLE": false,
+            "POS": [ 0.9, 0.5 ],
+            "LENGTH_UP": 0.2,
+            "LENGTH_DOWN": 0.2,
+            "TIMEOUT_S": 3,
+            "SPEED": 1.0,
+            "RANDOM_START_ENABLE": false,
+            "RANDOM_START_RADIUS": 0.005,
+            "CURVE_ENABLE": false,
+            "CURVE_AMOUNT": 0.005
+        }
+
+
+        // [V1.3.5] 默认配置检查器
+        const safeCheckConfig = (data) => {
+            if (!data.MOUSE) data.MOUSE = {};
+            // --- [修改 V1.3.5] P5: 自动释放加载逻辑 ---
+            if (data.MOUSE.VIEW_AUTO_RELEASE_ENABLE === undefined) {
+                // 迁移旧逻辑: 如果 MS 是 0, 说明是关闭
+                if (data.MOUSE.VIEW_AUTO_RELEASE_MS === 0) {
+                    data.MOUSE.VIEW_AUTO_RELEASE_ENABLE = false;
+                    data.MOUSE.VIEW_AUTO_RELEASE_MS = 200; // 重置为默认
+                } else if (data.MOUSE.VIEW_AUTO_RELEASE_MS > 0) {
+                     data.MOUSE.VIEW_AUTO_RELEASE_ENABLE = true; // 启用
+                } else {
+                    data.MOUSE.VIEW_AUTO_RELEASE_ENABLE = false; // 默认关闭
+                }
+            }
+            if (data.MOUSE.VIEW_AUTO_RELEASE_MS === undefined || data.MOUSE.VIEW_AUTO_RELEASE_MS === 0) {
+                 data.MOUSE.VIEW_AUTO_RELEASE_MS = 200; // 默认 200
+            }
+            // --- [修改 V1.3.5] P5 结束 ---
+            
+            if (data.MOUSE.VIEW_RESET_RADIUS_ENABLE === undefined) data.MOUSE.VIEW_RESET_RADIUS_ENABLE = false;
+            if (data.MOUSE.VIEW_RESET_RADIUS === undefined) data.MOUSE.VIEW_RESET_RADIUS = 0.1;
+            
+            // --- [新增 V1.3.5] P2: 加载圆环厚度 ---
+            if (data.MOUSE.VIEW_RESET_RADIUS_THICKNESS === undefined) data.MOUSE.VIEW_RESET_RADIUS_THICKNESS = 0.005;
+            // --- [新增 V1.3.5] P2 结束 ---
+
+            if (data.MOUSE.VIEW_RANDOM_RESET_ENABLE === undefined) data.MOUSE.VIEW_RANDOM_RESET_ENABLE = false;
+            if (data.MOUSE.VIEW_RANDOM_RESET_RADIUS === undefined) data.MOUSE.VIEW_RANDOM_RESET_RADIUS = 0.01;
+
+
+            if (!data.WHEEL) data.WHEEL = {};
+
+            // 检查曲线 (Curve)
+            if (!data.WHEEL.STAR_CURVE) {
+                data.WHEEL.STAR_CURVE = { ...defaultStarCurve };
+            }
+            if (!data.WHEEL.PLANET_CURVE) {
+                data.WHEEL.PLANET_CURVE = { ...defaultPlanetCurve };
+            }
+
+            // 检查行星 (Planet)
+            if (!data.WHEEL.WHEEL_PLANET) {
+                data.WHEEL.WHEEL_PLANET = { ENABLE: false, RADIUS: 0.015, SPEED: 1.5 };
+            }
+            if (!data.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED) {
+                data.WHEEL.WHEEL_PLANET.PLANET_DYNAMIC_SPEED = { ENABLE: false, MIN_SPEED: 0.5, FREQUENCY: 1.0 };
+            }
+
+            // 检查恒星动态速度 V1.2.3
+            if (!data.WHEEL.STAR_DYNAMIC_SPEED) {
+                data.WHEEL.STAR_DYNAMIC_SPEED = { ENABLE: false, MIN_SPEED: 10.0, FREQUENCY: 1.0 };
+            }
+            if (data.WHEEL.STEP_SPEED === undefined) data.WHEEL.STEP_SPEED = 60;
+
+            // 检查新 Shift 逻辑 V1.2.0
+            if (data.WHEEL.SHIFT_PRESS_TOGGLE === undefined) data.WHEEL.SHIFT_PRESS_TOGGLE = false;
+            if (data.WHEEL.SHIFT_RELEASE_TOGGLE === undefined) data.WHEEL.SHIFT_RELEASE_TOGGLE = false;
+
+            // 检查随机落点 V1.2.1
+            if (!data.WHEEL.RANDOM_START) {
+                data.WHEEL.RANDOM_START = { ENABLE: false, RADIUS: 0.01 };
+            }
+            
+            // [V1.3.3] 检查滚轮滑块 (扁平结构)
+            if (!data.SCROLL_SLIDER) {
+                data.SCROLL_SLIDER = { ...defaultScrollSlider };
+            }
+            // [V1.3.3] 修复: 检查扁平的 CURVE_ENABLE 和 CURVE_AMOUNT
+            if (data.SCROLL_SLIDER.CURVE_ENABLE === undefined) {
+                data.SCROLL_SLIDER.CURVE_ENABLE = defaultScrollSlider.CURVE_ENABLE;
+            }
+            if (data.SCROLL_SLIDER.CURVE_AMOUNT === undefined) {
+                 data.SCROLL_SLIDER.CURVE_AMOUNT = defaultScrollSlider.CURVE_AMOUNT;
+            }
+            // [V1.3.3] 确保所有 SCROLL_SLIDER 字段都存在
+            if (data.SCROLL_SLIDER.POS === undefined) data.SCROLL_SLIDER.POS = defaultScrollSlider.POS;
+            if (data.SCROLL_SLIDER.LENGTH_UP === undefined) data.SCROLL_SLIDER.LENGTH_UP = defaultScrollSlider.LENGTH_UP;
+            if (data.SCROLL_SLIDER.LENGTH_DOWN === undefined) data.SCROLL_SLIDER.LENGTH_DOWN = defaultScrollSlider.LENGTH_DOWN;
+            if (data.SCROLL_SLIDER.TIMEOUT_S === undefined) data.SCROLL_SLIDER.TIMEOUT_S = defaultScrollSlider.TIMEOUT_S;
+            if (data.SCROLL_SLIDER.SPEED === undefined) data.SCROLL_SLIDER.SPEED = defaultScrollSlider.SPEED;
+            if (data.SCROLL_SLIDER.RANDOM_START_ENABLE === undefined) data.SCROLL_SLIDER.RANDOM_START_ENABLE = defaultScrollSlider.RANDOM_START_ENABLE;
+            if (data.SCROLL_SLIDER.RANDOM_START_RADIUS === undefined) data.SCROLL_SLIDER.RANDOM_START_RADIUS = defaultScrollSlider.RANDOM_START_RADIUS;
+
+
+            // 检查按键抖动 (Key Jitter)
+            if (!data.KEY_JITTER) {
+                data.KEY_JITTER = { ENABLE: true, AMOUNT: 0.003 };
+            }
+
+            // --- 移除所有旧的/不兼容的键 ---
+            delete data.WHEEL.PATH_JITTER;
+            delete data.WHEEL.STAR_JITTER;
+            delete data.WHEEL.PLANET_JITTER;
+            delete data.WHEEL.JITTER_SMOOTH_SPEED;
+            delete data.WHEEL.PATH_DYNAMIC_SPEED; // V1.2.3 已重命名
+            delete data.WHEEL.WHEEL_JITTER; // V1.0
+            delete data.WHEEL.SHIFT_RANGE_SWITCH_ENABLE; // V1.0
+
+            return data;
+        };
+
+
         fetch("/configure/get")
             .then(resp => resp.json())
             .then(data => {
-                // --- [修改 V1.1.1] 安全检查，加入 KEY_JITTER ---
-                if (!data.WHEEL) {
-                    data.WHEEL = {};
-                }
-                // 检查并设置 STEP_SPEED
-                if (data.WHEEL.STEP_SPEED === undefined) {
-                    data.WHEEL.STEP_SPEED = 60; // 默认值
-                }
-
-                // V1.0.1 重命名: WHEEL_JITTER -> STAR_JITTER
-                if (data.WHEEL.WHEEL_JITTER) { // 检查旧键
-                    data.WHEEL.STAR_JITTER = data.WHEEL.WHEEL_JITTER;
-                    delete data.WHEEL.WHEEL_JITTER;
-                }
-                // 检查并设置 STAR_JITTER
-                if (!data.WHEEL.STAR_JITTER) {
-                    data.WHEEL.STAR_JITTER = { ENABLE: false, AMOUNT: 0.002, FREQUENCY: 1.0 };
-                }
-                // V1.1.0: 确保频率是 float
-                if (data.WHEEL.STAR_JITTER.FREQUENCY === undefined || typeof data.WHEEL.STAR_JITTER.FREQUENCY !== 'number') {
-                    data.WHEEL.STAR_JITTER.FREQUENCY = 1.0;
-                }
-
-                // 检查并设置 WHEEL_PLANET
-                if (!data.WHEEL.WHEEL_PLANET) {
-                    data.WHEEL.WHEEL_PLANET = { ENABLE: false, RADIUS: 0.015, SPEED: 1.5, RANDOM_START_ENABLE: false };
-                }
-                if (data.WHEEL.WHEEL_PLANET.RANDOM_START_ENABLE === undefined) {
-                    data.WHEEL.WHEEL_PLANET.RANDOM_START_ENABLE = false; // V1.0.1 新增
-                }
-
-                // 检查并设置 PLANET_JITTER
-                if (!data.WHEEL.PLANET_JITTER) {
-                    data.WHEEL.PLANET_JITTER = { ENABLE: false, AMOUNT: 0.005, FREQUENCY: 1.0 };
-                }
-                // V1.1.0: 确保频率是 float
-                if (data.WHEEL.PLANET_JITTER.FREQUENCY === undefined || typeof data.WHEEL.PLANET_JITTER.FREQUENCY !== 'number') {
-                    data.WHEEL.PLANET_JITTER.FREQUENCY = 1.0;
-                }
-
-                // 检查并设置 PATH_JITTER (V1.0.1 新增)
-                if (!data.WHEEL.PATH_JITTER) {
-                    data.WHEEL.PATH_JITTER = { ENABLE: false, AMOUNT: 0.002, FREQUENCY: 1.0 };
-                }
-                // V1.1.0: 确保频率是 float
-                if (data.WHEEL.PATH_JITTER.FREQUENCY === undefined || typeof data.WHEEL.PATH_JITTER.FREQUENCY !== 'number') {
-                    data.WHEEL.PATH_JITTER.FREQUENCY = 1.0;
-                }
-
-                // --- [新 V1.1.1] 安全检查 KEY_JITTER ---
-                if (!data.KEY_JITTER) {
-                    data.KEY_JITTER = { ENABLE: true, AMOUNT: 0.003 };
-                }
-                if (data.KEY_JITTER.ENABLE === undefined) {
-                    data.KEY_JITTER.ENABLE = true;
-                }
-                if (data.KEY_JITTER.AMOUNT === undefined) {
-                    data.KEY_JITTER.AMOUNT = 0.003;
-                }
-                // --- [新 V1.1.1] 结束 ---
-
-                setConfig(data)
+                const safeData = safeCheckConfig(data);
+                setConfig(safeData);
             })
             .catch(err => {
                 console.log(err)
-                // setConfig(produce(draft => { draft.IMG = "http://100.82.56.48:61070/screen.png" }))
             })
     }, [])
+    // --- [修改 V1.3.5] useEffect 结束 ---
 
     const KeyShow = ({ data }) => {
+        // [V1.3.0] 扩展需要显示坐标的类型
+        const posBasedTypes = ["PRESS", "AUTO_FIRE", "CLICK", "SYNC_VIEW_RESET", "CLICK_VIEW_RESET", "BACKPACK_TOGGLE", "CLICK_MAP_ON", "CLICK_MAP_OFF", "SEQUENTIAL_PRESS"];
+        const showPos = posBasedTypes.includes(data["TYPE"]);
+
+        // [V1.3.0] 扩展多点显示
+        const multiPosTypes = ["MULT_PRESS", "DRAG", "SEQUENTIAL_PRESS", "BACKPACK_TOGGLE"];
+        const showMultiPos = multiPosTypes.includes(data["TYPE"]);
+
+        // [V1.3.0] 决定显示的点
+        let points = [];
+        let bgColor = "#d90051"; // 默认 PRESS
+        let textColor = "#ffffff";
+        
+        if (showPos && !showMultiPos) {
+             points = [data.POS];
+        } else if (data.TYPE === "MULT_PRESS") {
+            points = data.POS_S || [];
+            bgColor = "#00796B";
+        } else if (data.TYPE === "DRAG") {
+            points = data.POS_S || [];
+            bgColor = "#3F51B5";
+        } else if (data.TYPE === "SEQUENTIAL_PRESS") {
+            points = [data.POS, ...(data.POS_S || [])];
+            bgColor = "#F57C00";
+        } else if (data.TYPE === "BACKPACK_TOGGLE") {
+            // [V1.3.1] 修复：确保 POS_B 存在
+            points = [data.POS, (data.POS_B || data.POS)];
+            bgColor = "#7B1FA2";
+        }
+
         return <div>
-            {data["TYPE"] === "PRESS" || data["TYPE"] === "AUTO_FIRE" || data["TYPE"] === "CLICK" ? <FixedIcon x={getPostionValueX(data["POS"][0])} y={getPostionValueY(data["POS"][1])} text={data["KEY"]} /> : null}
-            {data["TYPE"] === "MULT_PRESS" ? <GroupFixedIcon pos_s={data["POS_S"].map(([x, y]) => [getPostionValueX(x), getPostionValueY(y)])} text={data["KEY"]} bgColor={"#00796B"} textColor={"#ffffff"} /> : null}
-            {data["TYPE"] === "DRAG" ? <GroupFixedIcon pos_s={data["POS_S"].map(([x, y]) => [getPostionValueX(x), getPostionValueY(y)])} text={data["KEY"]} bgColor={"#3F51B5"} textColor={"#ffffff"} /> : null}
+            {showPos && !showMultiPos ? 
+                <FixedIcon x={getPostionValueX(data["POS"][0])} y={getPostionValueY(data["POS"][1])} text={data["KEY"]} /> 
+                : null
+            }
+            {showMultiPos ? 
+                <GroupFixedIcon 
+                    pos_s={points.map(([x, y]) => [getPostionValueX(x), getPostionValueY(y)])} 
+                    text={data["KEY"]} 
+                    bgColor={bgColor} 
+                    textColor={textColor} 
+                /> 
+                : null
+            }
         </div>
     }
 
@@ -1336,5 +1942,21 @@ export default function ConfigManager() {
             shift_range={config["WHEEL"]["SHIFT_RANGE_ENABLE"] ? getPostionValueX(config["WHEEL"]["SHIFT_RANGE"]) : 0}
         />
         <ViewShow x={getPostionValueX(config["MOUSE"]["POS"][0])} y={getPostionValueY(config["MOUSE"]["POS"][1])} />
+        
+        {/* --- [新增 V1.3.1] 渲染新组件 --- */}
+        <ViewResetRadiusShow
+             x={getPostionValueX(config["MOUSE"]["POS"][0])}
+             y={getPostionValueY(config["MOUSE"]["POS"][1])}
+             radius={getPostionValueX(config.MOUSE.VIEW_RESET_RADIUS)} 
+             enable={config.MOUSE.VIEW_RESET_RADIUS_ENABLE}
+        />
+        <ScrollSliderShow
+            x={getPostionValueX(config.SCROLL_SLIDER.POS[0])}
+            y={getPostionValueY(config.SCROLL_SLIDER.POS[1])}
+            lengthUp={getPostionValueY(config.SCROLL_SLIDER.LENGTH_UP)}
+            lengthDown={getPostionValueY(config.SCROLL_SLIDER.LENGTH_DOWN)}
+            enable={config.SCROLL_SLIDER.ENABLE}
+        />
+        {/* --- [新增 V1.3.1] 结束 --- */}
     </div>
 }
