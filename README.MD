@@ -1,7 +1,8 @@
 加qq群交流:[1067729485](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=YvlipEC3TLgLDKu843aRyzKaiHi_Naw0&authKey=f2RLVU4bdbYsuvSSNN1FBbGbFcAuxG30iY2UIDhMGNM7Pa4fsIlf0YNvrg7n5%2F%2Bf&noverify=0&group_code=1067729485)
 
+V1.3.0分支由原版V2.2.0改进
 
-7# 安卓触屏映射工具
+## 安卓触屏映射工具
 
 读取手柄，键盘，鼠标，触摸屏等输入并转换为虚拟触屏设备输出
 
