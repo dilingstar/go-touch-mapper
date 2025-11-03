@@ -1,3 +1,5 @@
+## 分支说明
+
 加qq群交流:[1067729485](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=YvlipEC3TLgLDKu843aRyzKaiHi_Naw0&authKey=f2RLVU4bdbYsuvSSNN1FBbGbFcAuxG30iY2UIDhMGNM7Pa4fsIlf0YNvrg7n5%2F%2Bf&noverify=0&group_code=1067729485)
 
 V1.3.0分支由原版V2.2.0改进
@@ -12,14 +14,7 @@ V1.3.0分支由原版V2.2.0改进
 
 从release直接下载编译好的二进制程序
 
-一般手机平板下载 [go-touch-mapper](https://github.com/dilingstar/go-touch-mapper/releases/download/V1.1.0/go-touch-mapper)
-
-androidX86下载 [go-touch-mapper]
-或者使用国内镜像
-
-一般手机平板 [go-touch-mapper]
-
-androidX86 [go-touch-mapper]
+一般手机平板下载V1.3.0alpha [go-touch-mapper](https://github.com/dilingstar/go-touch-mapper/releases/download/V1.3.0alpha/go-touch-mapper)
 
 读取dev和创建uinput需要shell或者root权限
 
@@ -84,9 +79,7 @@ Arguments:
   -v  --v-mouse
                         用触摸操作模拟鼠标,需要额光标外显示程序.
                         Default: false
-      --auto-release
-                        触发视角自动释放所需的静止ms数,50ms为检查单位,置0禁用.
-                        Default: 200
+    
       --measure-mode
                         显示视角移动像素计数,且可输入数值模拟滑动,方向键可微调.
                         Default: false
@@ -167,6 +160,15 @@ PC上 修改remote_control中sender("192.168.1.64:61069")为手机IP，端口默
 python remote_control.py 
 ```
 
+可以使用源主V2.3.0或[安卓远程控制](https://github.com/dilingstar/go-touch-mapper/blob/main/remote_control/agtmrcp/agtmrcp)
+### agtmrcp启动方式
+```
+adb shell "/data/local/tmp/agtmrcp <ip>:<端口>"
+或进入termux shell模式直接运行./agtmrcp <ip>:<端口>
+有两种启动方式
+默认模式agtmrcp <ip>:<端口>
+设置采样率模式agtmrcp <ip>:<端口> <500>，<500>这个参数是限制鼠标读取的频率上限，默认模式读取完整原始信息没有限制，设置采样率模式可以设置成别的数值
+```
 ## HID触屏
 
 使用ESP32-s3的HID库，创建一个外置触屏，在上位机通过串口通信的方式发送触摸指令
