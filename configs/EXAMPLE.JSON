@@ -1,4 +1,4 @@
-{
+{{
     "SCREEN": {
         "SIZE": [
             3200,
@@ -23,7 +23,11 @@
         "VIEW_RESET_RADIUS": 0.1,
         "VIEW_RESET_RADIUS_THICKNESS": 0.005,
         "VIEW_RANDOM_RESET_ENABLE": false,
-        "VIEW_RANDOM_RESET_RADIUS": 0.01
+        "VIEW_RANDOM_RESET_RADIUS": 0.01,
+        "VIEW_DELAY_RESET_ENABLE": false,
+        "VIEW_DELAY_RESET_MS": 20,
+        "VIEW_DELAY_RESET_RANDOM_ENABLE": false,
+        "VIEW_DELAY_RESET_MIN_MS": 10
     },
     "WHEEL": {
         "POS": [
@@ -35,6 +39,7 @@
         "SHIFT_RANGE_ENABLE": true,
         "SHIFT_PRESS_TOGGLE": false,
         "SHIFT_RELEASE_TOGGLE": false,
+        "WALK_MODE_ENABLE": false,
         "WASD": [
             "KEY_W",
             "KEY_A",
@@ -42,6 +47,7 @@
             "KEY_D"
         ],
         "STEP_SPEED": 60,
+        "DELAY_RESET_MS": 50,
         "STAR_DYNAMIC_SPEED": {
             "ENABLE": false,
             "MIN_SPEED": 10.0,
@@ -85,7 +91,14 @@
         "RANDOM_START_ENABLE": false,
         "RANDOM_START_RADIUS": 0.005,
         "CURVE_ENABLE": false,
-        "CURVE_AMOUNT": 0.005
+        "CURVE_AMOUNT": 0.005,
+        "CURVE_FREQUENCY": 1.0,
+        "DELAY_RESET_MS": 20,
+        "DELAY_RANDOM_ENABLE": false,
+        "DELAY_RESET_MIN_MS": 10,
+        "DYNAMIC_SPEED_ENABLE": false,
+        "DYNAMIC_SPEED_MIN": 0.5,
+        "DYNAMIC_SPEED_FREQ": 1.0
     },
     "KEY_JITTER": {
         "ENABLE": true,
@@ -135,10 +148,16 @@
             ]
         },
         "KEY_R": {
-            "TYPE": "PRESS",
+            "TYPE": "AUTO_FIRE",
             "POS": [
                 0.7640625,
                 0.8206018518518519
+            ],
+            "INTERVAL": [
+                18,
+                20,
+                10,
+                10
             ]
         },
         "KEY_1": {
