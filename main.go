@@ -23,7 +23,10 @@ import (
 	"go.bug.st/serial"
 )
 
-var go_build_version string = ""
+// --- [修改 V2.0.0] 1. 设置版本号 ---
+var go_build_version string = "外星分支v2.0.0"
+
+// --- [修改 V2.0.0] 1. 结束 ---
 var uinput_keyboard_mouse_dev_name = ""
 
 type event_pack struct {
@@ -293,14 +296,21 @@ func check_dev_type(dev *evdev.Evdev) dev_type {
 	if MTPositionX && MTPositionY && MTSlot && MTTrackingID {
 		return type_touch //触屏检测这几个abs类型即可
 	}
+
+	// --- [修改 V2.0.0] 4. 移植分支的鼠标检测逻辑 ---
 	_, RelX := rel[evdev.RelativeX]
 	_, RelY := rel[evdev.RelativeY]
-	_, Wheel := rel[evdev.RelativeWheel]
+	// --- [修改 V1.0.0] 按照您的要求，只检测 X, Y, 和左键 ---
 	_, MouseLeft := key[evdev.BtnLeft]
-	_, MouseRight := key[evdev.BtnRight]
-	if RelX && RelY && Wheel && MouseLeft && MouseRight {
-		return type_mouse //鼠标 检测XY 滚轮 左右键
+	// _, MouseRight := key[evdev.BtnRight]
+	// _, HWheel := rel[evdev.RelativeHWheel] // 移除对横向滚轮的强制要求
+	if RelX && RelY && MouseLeft {
+		// if RelX && RelY && HWheel && MouseLeft && MouseRight { // 旧的严格检测
+		// --- [修改 V1.0.0] 修改完毕 ---
+		return type_mouse //鼠标 检测XY 滚轮 左右中键
 	}
+	// --- [修改 V2.0.0] 4. 结束 ---
+
 	keyboard_keys := true
 	for i := evdev.KeyEscape; i <= evdev.KeyScrollLock; i++ {
 		_, ok := key[i]
@@ -654,11 +664,13 @@ func main() {
 		Help:     "模拟光标显示程序地址,默认本机6533端口,输入IP:PORT,例如192.168.3.7:6533,或者仅输入IP使用默认端口6533",
 	})
 
-	var view_release_timeout *int = parser.Int("", "auto-release", &argparse.Options{
-		Required: false,
-		Help:     "触发视角自动释放所需的静止ms数,50ms为检查单位,置0禁用",
-		Default:  200,
-	})
+	// --- [修改 V2.0.0] 2. 移除 --auto-release 参数 ---
+	// var view_release_timeout *int = parser.Int("", "auto-release", &argparse.Options{
+	// 	Required: false,
+	// 	Help:     "触发视角自动释放所需的静止ms数,50ms为检查单位,置0禁用",
+	// 	Default:  200,
+	// })
+	// --- [修改 V2.0.0] 2. 结束 ---
 
 	var measure_sensitivity_mode *bool = parser.Flag("", "measure-mode", &argparse.Options{
 		Required: false,
@@ -952,9 +964,19 @@ func main() {
 				go listen_device_orientation()
 			}
 		}
-		go touchHandler.auto_handel_view_release(*view_release_timeout)
+
+		// --- [修改 V2.0.0] 3. 适配 auto_handel_view_release (移除参数) ---
+		go touchHandler.auto_handel_view_release()
+		// --- [修改 V2.0.0] 3. 结束 ---
+
 		go touchHandler.loop_handel_wasd_wheel()
 		go touchHandler.loop_handel_rs_move()
+
+		// --- [修改 V2.0.0] 5. 移植分支的独有 goroutine ---
+		go touchHandler.loop_handel_wheel_planet()
+		go touchHandler.loop_auto_release_scroll_slider()
+		// --- [修改 V2.0.0] 5. 结束 ---
+
 		go touchHandler.handel_event()
 
 		if *using_v_mouse {
