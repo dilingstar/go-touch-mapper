@@ -1,4 +1,10 @@
-# 安卓触屏映射工具
+## 分支说明
+
+加qq群交流:[1067729485](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=YvlipEC3TLgLDKu843aRyzKaiHi_Naw0&authKey=f2RLVU4bdbYsuvSSNN1FBbGbFcAuxG30iY2UIDhMGNM7Pa4fsIlf0YNvrg7n5%2F%2Bf&noverify=0&group_code=1067729485)
+
+V2.0.0分支由原版V4.0.1改进
+
+## 安卓触屏映射工具
 
 读取手柄，键盘，鼠标，触摸屏等输入并转换为虚拟触屏设备输出
 
@@ -8,15 +14,7 @@
 
 从release直接下载编译好的二进制程序
 
-一般手机平板下载 [go-touch-mapper_arm64](https://github.com/RiderLty/go-touch-mapper/releases/latest/download/go-touch-mapper_arm64)
-
-androidX86下载 [go-touch-mapper_amd64](https://github.com/RiderLty/go-touch-mapper/releases/latest/download/go-touch-mapper_amd64)
-
-或者使用国内镜像
-
-一般手机平板 [go-touch-mapper_arm64](https://vip.123pan.cn/1833788059/direct/projects/go-touch-mapper/build/go-touch-mapper_arm64)
-
-androidX86 [go-touch-mapper_amd64](https://vip.123pan.cn/1833788059/direct/projects/go-touch-mapper/build/go-touch-mapper_amd64)
+一般手机平板下载V2.0.0beta [go-touch-mapper](https://github.com/dilingstar/go-touch-mapper/releases/download/V2.0.0beta/go-touch-mapper)
 
 读取dev和创建uinput需要shell或者root权限
 
@@ -24,7 +22,7 @@ androidX86 [go-touch-mapper_amd64](https://vip.123pan.cn/1833788059/direct/proje
 
 ```
 cd /data/local/tmp && \ 
-curl -LJo go-touch-mapper https://vip.123pan.cn/1833788059/direct/projects/go-touch-mapper/build/go-touch-mapper_arm64 && \
+#
 chmod 777 ./go-touch-mapper && \
 ./go-touch-mapper -h
 ```
@@ -35,7 +33,7 @@ chmod 777 ./go-touch-mapper && \
 可在安卓设备的termux环境下自己编译
 ```
 pkg i golang yarn -y
-git clone https://github.com/RiderLty/go-touch-mapper
+git clone https://github.com/dilingstar/go-touch-mapper
 cd go-touch-mapper
 cd go-touch-mapper-gh-pages
 yarn install
@@ -122,7 +120,7 @@ Arguments:
 
 程序运行后会显示控制后台地址```http://[ip]:61070/```用于编辑配置文件。
 
-如有需要，可参照[EXAMPLE.JSON](https://github.com/RiderLty/go-touch-mapper/blob/main/configs/EXAMPLE.JSON)手动修改配置文件
+如有需要，可参照[EXAMPLE.JSON](https://github.com/dilingstar/go-touch-mapper/blob/main/configs/EXAMPLE.JSON)手动修改配置文件
 
 可自动检测屏幕旋转方向，始终以左上角为原点，向右为X，向下为Y
 
