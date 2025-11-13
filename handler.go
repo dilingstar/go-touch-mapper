@@ -17,53 +17,160 @@ import (
 )
 
 type TouchHandler struct {
-	events                  chan *event_pack            //接收事件的channel
-	touch_control_func      touch_control_func          //发送触屏控制信号的channel
-	u_input                 chan *u_input_control_pack  //发送u_input控制信号的channel
-	map_on                  bool                        //映射模式开关
-	view_id                 int32                       //视角的触摸ID
-	wheel_id                int32                       //左摇杆的触摸ID
-	allocated_id            []bool                      //10个触摸点分配情况
-	config                  *simplejson.Json            //映射配置文件
-	joystickInfo            map[string]*simplejson.Json //所有摇杆配置文件 dev_name 为key
-	screen_x                int32                       //屏幕宽度
-	screen_y                int32                       //屏幕高度
-	rel_screen_x            int32
-	rel_screen_y            int32
-	view_init_x             int32 //初始化视角映射的x坐标
-	view_init_y             int32 //初始化视角映射的y坐标
-	view_current_x          int32 //当前视角映射的x坐标
-	view_current_y          int32 //当前视角映射的y坐标
-	view_speed_x            int32 //视角x方向的速度
-	view_speed_y            int32 //视角y方向的速度
-	rs_speed_x              float64
-	rs_speed_y              float64
-	wheel_init_x            int32 //初始化左摇杆映射的x坐标
-	wheel_init_y            int32 //初始化左摇杆映射的y坐标
-	wheel_range             int32 //左摇杆的x轴范围
-	wheel_wasd              []string
-	view_lock               sync.Mutex //视角控制相关的锁 用于自动释放和控制相关
-	wheel_lock              sync.Mutex //左摇杆控制相关的锁 用于自动释放和控制相关
-	touch_control_lock      sync.Mutex
-	auto_release_view_count int32    //自动释放计时器 有视角移动则重置 否则100ms加一 超过1s 自动释放
+	events             chan *event_pack            //接收事件的channel
+	touch_control_func touch_control_func          //发送触屏控制信号的channel
+	u_input            chan *u_input_control_pack  //发送u_input控制信号的channel
+	map_on             bool                        //映射模式开关
+	view_id            int32                       //视角的触摸ID
+	wheel_id           int32                       //左摇杆的触摸ID
+	allocated_id       []bool                      //10个触摸点分配情况
+	config             *simplejson.Json            //映射配置文件
+	joystickInfo       map[string]*simplejson.Json //所有摇杆配置文件 dev_name 为key
+	screen_x           int32                       //屏幕宽度 (已缩放 0x7ffffffe)
+	screen_y           int32                       //屏幕高度 (已缩放 0x7ffffffe)
+	rel_screen_x       int32                       //屏幕宽度 (未缩放, e.g., 1440)
+	rel_screen_y       int32                       //屏幕高度 (未缩放, e.g., 3200)
+	view_init_x        int32                       //初始化视角映射的x坐标 (已缩放 0x7ffffffe)
+	view_init_y        int32                       //初始化视角映射的y坐标 (已缩放 0x7ffffffe)
+	view_current_x     int32                       //当前视角映射的x坐标 (已缩放 0x7ffffffe)
+	view_current_y     int32                       //当前视角映射的y坐标 (已缩放 0x7ffffffe)
+	view_speed_x       int32                       //视角x方向的速度 (已缩放 0x7ffffffe)
+	view_speed_y       int32                       //视角y方向的速度 (已缩放 0x7ffffffe)
+	rs_speed_x         float64
+	rs_speed_y         float64
+	wheel_init_x       int32 //初始化左摇杆映射的x坐标 (未缩放)
+	wheel_init_y       int32 //初始化左摇杆映射的y坐标 (未缩放)
+	wheel_range        int32 //左摇杆的x轴范围 (未缩放)
+	wheel_wasd         []string
+	view_lock          sync.Mutex //视角控制相关的锁 用于自动释放和控制相关
+	wheel_lock         sync.Mutex //左摇杆控制相关的锁 用于自动释放和控制相关
+	touch_control_lock sync.Mutex
+	id_alloc_lock      sync.Mutex // --- [移植 V1.4.1] P1: 触点ID分配锁 ---
+
+	// --- [移植 V1.3.0] auto_release_view_count 重命名并移到 MOUSE 配置中 ---
+	auto_release_view_counter int32 // 自动释放计时器 (内部计数)
+	// --- [移植 V1.3.0] 结束 ---
+
 	abs_last                sync.Map //abs值的上一次值 用于手柄
 	using_joystick_name     string   //当前正在使用的手柄 针对不同手柄死区不同 但程序支持同时插入多个手柄 因此会识别最进发送事件的手柄作为死区配置
 	ls_wheel_released       bool     //左摇杆滚轮释放
 	wasd_wheel_released     bool     //wasd滚轮释放 两个都释放时 轮盘才会释放
-	wasd_wheel_last_x       int32    //wasd滚轮上一次的x坐标
-	wasd_wheel_last_y       int32    //wasd滚轮上一次的y坐标
+	wasd_wheel_last_x       int32    //wasd滚WHEEL上一次的x坐标
+	wasd_wheel_last_y       int32    //wasd滚WHEEL上一次的y坐标
 	wasd_up_down_statues    []bool
 	key_action_state_save   sync.Map
 	BTN_SELECT_UP_DOWN      int32
-	// KEYBOARD_SWITCH_KEY_NAME  string
 	KEYBOARD_SWITCH_KEY_NAME_S map[string]bool //键盘切换映射的按键集合
 	map_switch_signal          chan bool
 	measure_sensitivity_mode   bool  //计算模式
 	total_move_x               int32 //视角总移动距离x
 	total_move_y               int32 //视角总移动距离y
 	wheel_shift_enable         bool  //启用shift轮盘
-	wheel_shift_switch_enable  bool  //shift轮盘切换 or 长按
 	wheel_shift_range          int32
+
+	// --- [移植 V1.1.1] ---
+	key_jitter_enable    bool  // [新] 按键抖动开关
+	key_jitter_amount_px int32 // [新] 按键抖动幅度(像素) (未缩放)
+	// --- [移植 V1.1.1] 结束 ---
+
+	// --- [移植 V1.1.0] ---
+	wheel_step_speed float64 // [修改 V1.0.0] 轮盘移动平滑速度 (原版 60)
+
+	wheel_planet_enable    bool    // [新] 行星转圈开关
+	wheel_planet_radius_px int32   // [新] 行星转圈半径(像素)
+	wheel_planet_speed     float64 // [新] 行星转圈速度 (弧度/帧)
+	planet_angle           float64 // [新] 行星当前角度
+
+	wheel_star_x int32 // [新 V1.0.0] 轮盘恒星X
+	wheel_star_y int32 // [新 V1.0.0] 轮盘恒星Y
+	// --- [移植 V1.1.0] 结束 ---
+
+	// --- [移植 V1.2.3] 彻底重构为 "Curve" (曲线) ---
+	shift_press_toggle   bool // [新 V1.2.0] Shift 摁下切换
+	shift_release_toggle bool // [新 V1.2.0] Shift 抬起切换
+
+	// --- [移植 V1.4.1] P3: 静步模式 ---
+	wheel_walk_mode_enable bool // (来自配置)
+	// --- [移植 V1.4.1] P3 结束 ---
+
+	// 恒星动态速度 (V1.2.3 重命名)
+	star_dynamic_speed_enable  bool    // [新 V1.2.0]
+	star_dynamic_speed_min     float64 // [新 V1.2.0]
+	star_dynamic_speed_freq    float64 // [新 V1.2.0]
+	star_dynamic_speed_counter float64 // [新 V1.2.0]
+
+	// 行星动态速度
+	planet_dynamic_speed_enable  bool    // [新 V1.2.0]
+	planet_dynamic_speed_min     float64 // [新 V1.2.0]
+	planet_dynamic_speed_freq    float64 // [新 V1.2.0]
+	planet_dynamic_speed_counter float64 // [新 V1.2.0]
+
+	// 独立随机落点
+	random_start_enable    bool  // [新 V1.2.1]
+	random_start_radius_px int32 // [新 V1.2.1]
+
+	// 恒星曲线 (V1.2.3 新)
+	star_curve_enable    bool    // [新 V1.2.3]
+	star_curve_amount_px int32   // [新 V1.2.3]
+	star_curve_freq      float64 // [新 V1.2.3] (rad/frame)
+	star_curve_counter   float64 // [新 V1.2.3] (rad)
+
+	// 行星曲线 (V1.2.3 新)
+	planet_curve_enable    bool    // [新 V1.2.3]
+	planet_curve_amount_px int32   // [新 V1.2.3]
+	planet_curve_freq      float64 // [新 V1.2.3] (V1.2.4 改为乘数)
+	// --- [移植 V1.2.3] 结束 ---
+
+	// --- [移植 V1.4.0] P2, P5, P6: 视角 (MOUSE) 配置 ---
+	view_auto_release_enable       bool  // (来自配置) 自动释放开关
+	view_auto_release_ms           int   // (来自配置) 自动释放时间
+	view_reset_radius_enable       bool  // (来自配置) 启用半径重置
+	view_reset_radius_px           int32 // (来自配置) 重置半径 (未缩放)
+	view_reset_radius_thickness_px int32 // (来自配置) 重置半径厚度 (未缩放)
+	view_random_reset_enable       bool  // (来自配置) 启用随机重置
+	view_random_reset_radius_px    int32 // (来自配置) 随机重置半径 (未缩放)
+	view_delay_reset_enable        bool  // (来自配置) P6
+	view_delay_reset_ms            int   // (来自配置) P6
+	view_delay_reset_random_enable bool  // (来自配置) P6
+	view_delay_reset_min_ms        int   // (来自配置) P6
+	// --- [移植 V1.4.0] 视角 (MOUSE) 结束 ---
+
+	// --- [移植 V1.4.0] P7: 滚轮滑块 (SCROLL_SLIDER) 配置 ---
+	scroll_slider_enable           bool    // (来自配置)
+	scroll_slider_init_x           int32   // (来自配置) 中心X (未缩放)
+	scroll_slider_init_y           int32   // (来自配置) 中心Y (未缩放)
+	scroll_slider_bound_up         int32   // (来自配置) 上边界Y (未缩放)
+	scroll_slider_bound_down       int32   // (来自配置) 下边界Y (未缩放)
+	scroll_slider_timeout_duration time.Duration // (来自配置) 超时
+	scroll_slider_speed_px         int32   // (来自配置) 速度 (未缩放)
+	scroll_slider_random_enable    bool    // (来自配置)
+	scroll_slider_random_radius_px int32   // (来自配置) 随机半径 (未缩放)
+	scroll_slider_curve_enable     bool    // (来自配置)
+	scroll_slider_curve_amount_px  int32   // (来自配置) 曲线幅度 (未缩放)
+	scroll_slider_curve_freq       float64 // (来自配置) P7
+	scroll_slider_delay_reset_ms   int     // (来自配置) P7
+	scroll_slider_delay_random_enable bool // (来自配置) P7
+	scroll_slider_delay_reset_min_ms int  // (来自配置) P7
+	scroll_slider_dynamic_speed_enable bool // (来自配置) P7
+	scroll_slider_dynamic_speed_min float64 // (来自配置) P7
+	scroll_slider_dynamic_speed_freq float64 // (来自配置) P7
+	// --- [移植 V1.4.0] P7: 滚轮滑块 (SCROLL_SLIDER) 状态 ---
+	scroll_slider_id                 int32     // (状态) 触点ID
+	scroll_slider_current_y          int32     // (状态) 当前Y (未缩放)
+	scroll_slider_last_scroll_time   time.Time // (状态) 用于自动释放触点
+	scroll_slider_last_reset_time    time.Time // (状态) 用于超时重置位置
+	scroll_slider_dynamic_speed_counter float64 // (状态) P7
+	scroll_slider_lock               sync.Mutex
+	// --- [移植 V1.4.0] 滚轮滑块结束 ---
+
+	// --- [移植 V1.4.0] P8: 轮盘延迟重置 ---
+	wheel_delay_reset_duration time.Duration // (来自配置) P8
+	wheel_last_input_time      time.Time     // (状态) P8
+	// --- [移植 V1.4.0] P8 结束 ---
+
+	// --- [移植 V1.3.5] P7: 粘滞按键修复 ---
+	real_key_down_state sync.Map // 跟踪物理(uinput)按键状态
+	// --- [移植 V1.3.5] 结束 ---
 }
 
 const (
@@ -93,14 +200,16 @@ var UDF map[int32](string) = map[int32](string){
 	UP:   "🔴",
 }
 
-const (
-	Wheel_action_move    int8 = 1
-	Wheel_action_release int8 = 0
-)
+// const (
+// 	Wheel_action_move    int8 = 1
+// 	Wheel_action_release int8 = 0
+// )
 
+// [移植 V1.1.0] 250Hz 循环
 const (
-	touch_pos_scale uint8 = 8
-	// touch_pos_scale uint8 = 0
+	MAIN_LOOP_HZ        = 250.0
+	MAIN_LOOP_NS_DOUBLE = float64(time.Second) / MAIN_LOOP_HZ
+	MAIN_LOOP_NS_INT    = int64(MAIN_LOOP_NS_DOUBLE)
 )
 
 var HAT_D_U map[string]([]int32) = map[string]([]int32){
@@ -115,9 +224,110 @@ var HAT0_KEY_NAME map[string][]string = map[string][]string{
 	"HAT0Y": {"BTN_DPAD_UP", "BTN_DPAD_DOWN"},
 }
 
-func rand_offset() int32 {
-	return rand.Int31n(20) - 10
+// --- [移植 V1.3.0] 随机偏移辅助函数 ---
+// (用于按键抖动, 视角随机重置, 滚轮滑块随机落点)
+// (返回 未缩放 坐标)
+func (self *TouchHandler) get_random_offset(radius_px int32) (int32, int32) {
+	if radius_px <= 0 {
+		return 0, 0
+	}
+	rand_angle := rand.Float64() * 2 * math.Pi
+	// 在圆内均匀分布
+	rand_radius := rand.Float64() * float64(radius_px)
+	offset_x := int32(rand_radius * math.Cos(rand_angle))
+	offset_y := int32(rand_radius * math.Sin(rand_angle))
+	return offset_x, offset_y
 }
+
+// --- [移植 V1.3.0] 结束 ---
+
+// --- [移植 V1.4.0] P6, P7: 随机延迟辅助函数 ---
+func (self *TouchHandler) get_delay_ms(base_ms int, min_ms int, random_enable bool) time.Duration {
+	if !random_enable {
+		return time.Duration(base_ms) * time.Millisecond
+	}
+	if min_ms >= base_ms {
+		return time.Duration(base_ms) * time.Millisecond
+	}
+	// 在 [min_ms, base_ms] 之间随机
+	delay := rand.Intn(base_ms-min_ms+1) + min_ms
+	return time.Duration(delay) * time.Millisecond
+}
+
+// --- [移植 V1.4.0] 结束 ---
+
+// --- [移植 V1.4.1] P6: 随机连点辅助函数 ---
+func (self *TouchHandler) get_random_duration(max_ms int, min_ms int) time.Duration {
+	if min_ms >= max_ms {
+		return time.Duration(max_ms) * time.Millisecond
+	}
+	// 在 [min_ms, max_ms] 之间随机
+	dur := rand.Intn(max_ms-min_ms+1) + min_ms
+	return time.Duration(dur) * time.Millisecond
+}
+
+// --- [移植 V1.4.1] P6 结束 ---
+
+// [移植 V1.2.3] 恒星曲线 (S形波浪) 算法 (保留)
+func (self *TouchHandler) get_star_curve_offset() (int32, int32) {
+	if !self.star_curve_enable || self.star_curve_amount_px == 0 {
+		return 0, 0
+	}
+
+	// 1. 增加计数器 (弧度)
+	self.star_curve_counter += self.star_curve_freq
+	if self.star_curve_counter > (2 * math.Pi) {
+		self.star_curve_counter -= (2 * math.Pi)
+	}
+
+	// 2. 使用 Sin 和 Cos (以不同频率) 来创建平滑的、非圆形的 "蠕动"
+	offset_x := math.Sin(self.star_curve_counter*0.7) * float64(self.star_curve_amount_px)
+	offset_y := math.Cos(self.star_curve_counter*1.1) * float64(self.star_curve_amount_px)
+
+	return int32(offset_x), int32(offset_y)
+}
+
+// --- [移植 V1.2.0] 动态速度 (脉动) 函数 ---
+// 返回一个在 [min_speed, max_speed] 之间按正弦波变化的值
+func (self *TouchHandler) get_dynamic_speed(
+	max_speed float64, // 绑定的最快速度
+	min_speed float64, // 调节的最慢速度
+	freq float64, // 周期频率 (Hz)
+	counter *float64, // 计数器 (弧度)
+) float64 {
+	if min_speed >= max_speed {
+		return max_speed // 如果最小值不小于最大值，则返回最大值
+	}
+
+	// 1. 计算每帧增加的弧度
+	rad_per_frame := (freq * 2 * math.Pi) / MAIN_LOOP_HZ
+	*counter += rad_per_frame
+	if *counter > (2 * math.Pi) {
+		*counter -= (2 * math.Pi)
+	}
+
+	// 2. 计算 Sin 值
+	sin_wave := (math.Sin(*counter) + 1) / 2.0 // [0, 1]
+
+	// 3. 将 [0, 1] 映射到 [min_speed, max_speed]
+	speed_range := max_speed - min_speed
+	current_speed := (sin_wave * speed_range) + min_speed
+
+	return current_speed
+}
+
+// --- [移植 V1.1.1] 按键抖动应用函数 ---
+// [修改 V1.3.0] 使用新的 get_random_offset 辅助函数
+func (self *TouchHandler) apply_key_jitter(x int32, y int32) (int32, int32) {
+	if !self.key_jitter_enable || self.key_jitter_amount_px == 0 {
+		return x, y
+	}
+	// 按键抖动不需要频率，每次都计算
+	offset_x, offset_y := self.get_random_offset(self.key_jitter_amount_px)
+	return x + offset_x, y + offset_y
+}
+
+// --- [移植 V1.1.1] 结束 ---
 
 func InitTouchHandler(
 	mapperFilePath string,
@@ -293,6 +503,10 @@ func InitTouchHandler(
 	screenSizeY := config_json.Get("SCREEN").Get("SIZE").GetIndex(1).MustInt()
 	global_screen_x = int32(screenSizeX)
 	global_screen_y = int32(screenSizeY)
+	// [移植 V1.3.0] 转换为 float64 供后续计算
+	screenSizeX_f := float64(screenSizeX)
+	screenSizeY_f := float64(screenSizeY)
+
 	KEYBOARD_SWITCH_KEY_NAME_S := make(map[string]bool)
 	for _, key := range config_json.Get("MOUSE").Get("SWITCH_KEYS").MustStringArray() {
 		if key != "" {
@@ -301,6 +515,100 @@ func InitTouchHandler(
 			logger.Warnf("映射配置文件中有空的键盘切换按键,请检查配置文件")
 		}
 	}
+
+	// --- [移植 V1.1.2] 安全加载 KEY_JITTER 配置 ---
+	var key_jitter_enable_val bool
+	var key_jitter_amount_px_val int32
+	if keyJitterJSON, ok := config_json.CheckGet("KEY_JITTER"); ok {
+		key_jitter_enable_val = keyJitterJSON.Get("ENABLE").MustBool(true)
+		key_jitter_amount_val := keyJitterJSON.Get("AMOUNT").MustFloat64(0.003)
+		key_jitter_amount_px_val = int32(key_jitter_amount_val * screenSizeX_f) // (未缩放)
+	} else {
+		key_jitter_enable_val = true
+		key_jitter_amount_px_val = int32(0.003 * screenSizeX_f) // (未缩放)
+	}
+	// --- [移植 V1.1.2] 结束 ---
+
+	// --- [移植 V1.4.1] P3, P8: 加载轮盘高级配置 ---
+	wheel_cfg := config_json.Get("WHEEL")
+	wheel_step_speed_val := wheel_cfg.Get("STEP_SPEED").MustFloat64(60)
+	wheel_delay_reset_ms_val := wheel_cfg.Get("DELAY_RESET_MS").MustInt(50) // P8
+	wheel_walk_mode_enable_val := wheel_cfg.Get("WALK_MODE_ENABLE").MustBool(false) // P3
+
+	// 恒星动态速度 (V1.2.3 重命名)
+	star_dynamic_speed_enable_val := wheel_cfg.Get("STAR_DYNAMIC_SPEED").Get("ENABLE").MustBool(false)
+	star_dynamic_speed_min_val := wheel_cfg.Get("STAR_DYNAMIC_SPEED").Get("MIN_SPEED").MustFloat64(10.0)
+	star_dynamic_speed_freq_val := wheel_cfg.Get("STAR_DYNAMIC_SPEED").Get("FREQUENCY").MustFloat64(1.0)
+
+	// 独立随机落点
+	random_start_enable_val := wheel_cfg.Get("RANDOM_START").Get("ENABLE").MustBool(false)
+	random_start_radius_val := wheel_cfg.Get("RANDOM_START").Get("RADIUS").MustFloat64(0.01)
+	random_start_radius_px_val := int32(random_start_radius_val * screenSizeX_f) // (未缩放)
+
+	// 行星
+	wheel_planet_enable_val := wheel_cfg.Get("WHEEL_PLANET").Get("ENABLE").MustBool(false)
+	wheel_planet_radius_val := wheel_cfg.Get("WHEEL_PLANET").Get("RADIUS").MustFloat64(0.015)
+	wheel_planet_radius_px_val := int32(wheel_planet_radius_val * screenSizeX_f) // (未缩放)
+	wheel_planet_speed_val := wheel_cfg.Get("WHEEL_PLANET").Get("SPEED").MustFloat64(1.5)
+
+	// 行星动态速度
+	planet_dynamic_speed_enable_val := wheel_cfg.Get("WHEEL_PLANET").Get("PLANET_DYNAMIC_SPEED").Get("ENABLE").MustBool(false)
+	planet_dynamic_speed_min_val := wheel_cfg.Get("WHEEL_PLANET").Get("PLANET_DYNAMIC_SPEED").Get("MIN_SPEED").MustFloat64(0.5)
+	planet_dynamic_speed_freq_val := wheel_cfg.Get("WHEEL_PLANET").Get("PLANET_DYNAMIC_SPEED").Get("FREQUENCY").MustFloat64(1.0)
+
+	// 行星曲线 (V1.2.3 新)
+	planet_curve_enable_val := wheel_cfg.Get("PLANET_CURVE").Get("ENABLE").MustBool(false)
+	planet_curve_amount_val := wheel_cfg.Get("PLANET_CURVE").Get("CURVE_AMOUNT").MustFloat64(0.005)
+	planet_curve_amount_px_val := int32(planet_curve_amount_val * screenSizeX_f) // (未缩放)
+	planet_curve_freq_val := wheel_cfg.Get("PLANET_CURVE").Get("CURVE_FREQUENCY").MustFloat64(1.0)
+	// [V1.2.4] freq 在 V1.2.4 中是乘数
+
+	// 恒星曲线 (V1.2.3 新)
+	star_curve_enable_val := wheel_cfg.Get("STAR_CURVE").Get("ENABLE").MustBool(false)
+	star_curve_amount_val := wheel_cfg.Get("STAR_CURVE").Get("CURVE_AMOUNT").MustFloat64(0.002)
+	star_curve_amount_px_val := int32(star_curve_amount_val * screenSizeX_f) // (未缩放)
+	star_curve_freq_val := wheel_cfg.Get("STAR_CURVE").Get("CURVE_FREQUENCY").MustFloat64(1.0)
+	star_curve_freq_rad_val := (star_curve_freq_val * 2 * math.Pi) / MAIN_LOOP_HZ // 转换为 弧度/帧
+	// --- [移植 V1.4.1] P3, P8 结束 ---
+
+	// --- [移植 V1.4.0] P2, P5, P6: 加载 MOUSE 视角新配置 ---
+	mouse_cfg := config_json.Get("MOUSE")
+	view_auto_release_enable_val := mouse_cfg.Get("VIEW_AUTO_RELEASE_ENABLE").MustBool(false) // P5
+	view_auto_release_ms_val := mouse_cfg.Get("VIEW_AUTO_RELEASE_MS").MustInt(200)             // P5
+	view_reset_radius_enable_val := mouse_cfg.Get("VIEW_RESET_RADIUS_ENABLE").MustBool(false)
+	view_reset_radius_px_val := int32(mouse_cfg.Get("VIEW_RESET_RADIUS").MustFloat64(0.1) * screenSizeX_f) // (未缩放)
+	view_reset_radius_thickness_px_val := int32(mouse_cfg.Get("VIEW_RESET_RADIUS_THICKNESS").MustFloat64(0.005) * screenSizeX_f) // P2 (未缩放)
+	view_random_reset_enable_val := mouse_cfg.Get("VIEW_RANDOM_RESET_ENABLE").MustBool(false)
+	view_random_reset_radius_px_val := int32(mouse_cfg.Get("VIEW_RANDOM_RESET_RADIUS").MustFloat64(0.01) * screenSizeX_f) // (未缩放)
+	view_delay_reset_enable_val := mouse_cfg.Get("VIEW_DELAY_RESET_ENABLE").MustBool(false)    // P6
+	view_delay_reset_ms_val := mouse_cfg.Get("VIEW_DELAY_RESET_MS").MustInt(20)                 // P6
+	view_delay_reset_random_enable_val := mouse_cfg.Get("VIEW_DELAY_RESET_RANDOM_ENABLE").MustBool(false) // P6
+	view_delay_reset_min_ms_val := mouse_cfg.Get("VIEW_DELAY_RESET_MIN_MS").MustInt(10)        // P6
+	// --- [移植 V1.4.0] MOUSE 加载结束 ---
+
+	// --- [移植 V1.4.0] P7: 加载 SCROLL_SLIDER 滚轮滑块配置 ---
+	scroll_cfg := config_json.Get("SCROLL_SLIDER")
+	scroll_slider_enable_val := scroll_cfg.Get("ENABLE").MustBool(false)
+	scroll_slider_init_x_val := int32(scroll_cfg.Get("POS").GetIndex(0).MustFloat64(0.9) * screenSizeX_f)    // (未缩放)
+	scroll_slider_init_y_val := int32(scroll_cfg.Get("POS").GetIndex(1).MustFloat64(0.5) * screenSizeY_f)    // (未缩放)
+	scroll_slider_bound_up_val := scroll_slider_init_y_val - int32(scroll_cfg.Get("LENGTH_UP").MustFloat64(0.2)*screenSizeY_f)    // (未缩放)
+	scroll_slider_bound_down_val := scroll_slider_init_y_val + int32(scroll_cfg.Get("LENGTH_DOWN").MustFloat64(0.2)*screenSizeY_f) // (未缩放)
+	scroll_slider_timeout_duration_val := time.Duration(scroll_cfg.Get("TIMEOUT_S").MustFloat64(3.0) * float64(time.Second))
+	// (未缩放) 速度 1.0 = 1% 屏幕高度
+	scroll_slider_speed_val := scroll_cfg.Get("SPEED").MustFloat64(1.0)
+	scroll_slider_speed_px_val := int32(scroll_slider_speed_val * 0.01 * screenSizeY_f)
+	scroll_slider_random_enable_val := scroll_cfg.Get("RANDOM_START_ENABLE").MustBool(false)
+	scroll_slider_random_radius_px_val := int32(scroll_cfg.Get("RANDOM_START_RADIUS").MustFloat64(0.005) * screenSizeX_f) // (未缩放)
+	scroll_slider_curve_enable_val := scroll_cfg.Get("CURVE_ENABLE").MustBool(false)
+	scroll_slider_curve_amount_px_val := int32(scroll_cfg.Get("CURVE_AMOUNT").MustFloat64(0.005) * screenSizeX_f) // (未缩放)
+	scroll_slider_curve_freq_val := scroll_cfg.Get("CURVE_FREQUENCY").MustFloat64(1.0)    // P7
+	scroll_slider_delay_reset_ms_val := scroll_cfg.Get("DELAY_RESET_MS").MustInt(20)       // P7
+	scroll_slider_delay_random_enable_val := scroll_cfg.Get("DELAY_RANDOM_ENABLE").MustBool(false) // P7
+	scroll_slider_delay_reset_min_ms_val := scroll_cfg.Get("DELAY_RESET_MIN_MS").MustInt(10) // P7
+	scroll_slider_dynamic_speed_enable_val := scroll_cfg.Get("DYNAMIC_SPEED_ENABLE").MustBool(false) // P7
+	scroll_slider_dynamic_speed_min_val := scroll_cfg.Get("DYNAMIC_SPEED_MIN").MustFloat64(0.5) // P7
+	scroll_slider_dynamic_speed_freq_val := scroll_cfg.Get("DYNAMIC_SPEED_FREQ").MustFloat64(1.0) // P7
+	// --- [移植 V1.4.0] SCROLL_SLIDER 加载结束 ---
 
 	return &TouchHandler{
 		events:             events,
@@ -311,51 +619,156 @@ func InitTouchHandler(
 		wheel_id:           -1,
 		allocated_id:       make([]bool, 12),
 		// ^^^ 是可以创建超过12个的 只是不显示白点罢了
-		config:         config_json,
-		joystickInfo:   joystickInfo,
-		screen_x:       int32(screenSizeX),
-		screen_y:       int32(screenSizeY),
-		rel_screen_x:   int32(screenSizeX),
-		rel_screen_y:   int32(screenSizeY),
-		view_init_x:    int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX)),
-		view_init_y:    int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY)),
-		view_current_x: int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX)),
-		view_current_y: int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY)),
-		view_speed_x:   int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(0).MustFloat64() * 0x7ffffffe / float64(screenSizeX)),
-		view_speed_y:   int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(1).MustFloat64() * 0x7ffffffe / float64(screenSizeX)),
-		// rs_speed_x:     config_json.Get("MOUSE").Get("RS_SPEED").GetIndex(0).MustFloat64(),
-		// rs_speed_y:     config_json.Get("MOUSE").Get("RS_SPEED").GetIndex(1).MustFloat64(),
+		config:       config_json,
+		joystickInfo: joystickInfo,
+
+		// --- [修改 V2.0.0] 坐标系转换 ---
+		// 使用 0x7ffffffe
+		screen_x: 0x7ffffffe,
+		screen_y: 0x7ffffffe,
+		// 保留未缩放的
+		rel_screen_x: int32(screenSizeX),
+		rel_screen_y: int32(screenSizeY),
+		// 使用 0x7ffffffe
+		view_init_x: int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * 0x7ffffffe),
+		view_init_y: int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * 0x7ffffffe),
+		// 使用 0x7ffffffe
+		view_current_x: int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * 0x7ffffffe),
+		view_current_y: int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * 0x7ffffffe),
+		// 使用 0x7ffffffe (v4.0.1 的计算方式)
+		view_speed_x: int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(0).MustFloat64() * 0x7ffffffe / screenSizeX_f),
+		view_speed_y: int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(1).MustFloat64() * 0x7ffffffe / screenSizeX_f),
+		// --- [修改 V2.0.0] 坐标系转换结束 ---
+
 		rs_speed_x:   32,
 		rs_speed_y:   32,
-		wheel_init_x: int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX)),
-		wheel_init_y: int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY)),
-		wheel_range:  int32(config_json.Get("WHEEL").Get("RANGE").MustFloat64() * float64(screenSizeX)),
+		wheel_init_x: int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * screenSizeX_f), // (未缩放)
+		wheel_init_y: int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * screenSizeY_f), // (未缩放)
+		wheel_range:  int32(config_json.Get("WHEEL").Get("RANGE").MustFloat64() * screenSizeX_f),           // (未缩放)
 		wheel_wasd: []string{
 			config_json.Get("WHEEL").Get("WASD").GetIndex(0).MustString(),
 			config_json.Get("WHEEL").Get("WASD").GetIndex(1).MustString(),
 			config_json.Get("WHEEL").Get("WASD").GetIndex(2).MustString(),
 			config_json.Get("WHEEL").Get("WASD").GetIndex(3).MustString(),
 		},
-		view_lock:               sync.Mutex{},
-		wheel_lock:              sync.Mutex{},
-		touch_control_lock:      sync.Mutex{},
-		auto_release_view_count: 0,
-		abs_last:                abs_last_map,
-		using_joystick_name:     "",
-		ls_wheel_released:       true,
-		wasd_wheel_released:     true,
-		wasd_wheel_last_x:       int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX)),
-		wasd_wheel_last_y:       int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY)),
+		view_lock:                 sync.Mutex{},
+		wheel_lock:                sync.Mutex{},
+		touch_control_lock:        sync.Mutex{},
+		id_alloc_lock:             sync.Mutex{}, // [移植 V1.4.1] P1
+		auto_release_view_counter: 0,            // [移植 V1.3.0] 重命名
+		abs_last:                  abs_last_map,
+		using_joystick_name:       "",
+		ls_wheel_released:         true,
+		wasd_wheel_released:       true,
+		// [移植 V1.2.5 回滚] 保持 V1.2.3/V1.1.0 逻辑
+		wasd_wheel_last_x:       int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * screenSizeX_f),
+		wasd_wheel_last_y:       int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * screenSizeY_f),
 		wasd_up_down_statues:    make([]bool, 5), //放置wasd的状态与shift启用下，shift的状态
 		key_action_state_save:   sync.Map{},
 		BTN_SELECT_UP_DOWN:      0,
-		// KEYBOARD_SWITCH_KEY_NAME:  config_json.Get("MOUSE").Get("SWITCH_KEY").MustString(),
 		KEYBOARD_SWITCH_KEY_NAME_S: KEYBOARD_SWITCH_KEY_NAME_S,
 		map_switch_signal:          map_switch_signal,
 		measure_sensitivity_mode:   measure_sensitivity_mode,
-		wheel_shift_enable:         config_json.Get("WHEEL").Get("SHIFT_RANGE_ENABLE").MustBool(),
-		wheel_shift_switch_enable:  config_json.Get("WHEEL").Get("SHIFT_RANGE_SWITCH_ENABLE").MustBool(),
-		wheel_shift_range:          int32(config_json.Get("WHEEL").Get("SHIFT_RANGE").MustFloat64() * float64(screenSizeX)),
+		wheel_shift_enable:         config_json.Get("WHEEL").Get("SHIFT_RANGE_ENABLE").MustBool(false),
+		wheel_shift_range: int32(config_json.Get("WHEEL").Get("SHIFT_RANGE").MustFloat64() * screenSizeX_f), // (未缩放)
+
+		// --- [移植 V1.1.2] 初始化 KEY_JITTER ---
+		key_jitter_enable:    key_jitter_enable_val,
+		key_jitter_amount_px: key_jitter_amount_px_val, // (未缩放)
+		// --- [移植 V1.1.2] 结束 ---
+
+		// --- [移植 V1.4.1] P3, P8: 初始化轮盘高级配置 ---
+		wheel_step_speed:           wheel_step_speed_val,
+		wheel_delay_reset_duration: time.Duration(wheel_delay_reset_ms_val) * time.Millisecond, // P8
+		wheel_last_input_time:      time.Now(),                                                 // P8
+		wheel_walk_mode_enable:     wheel_walk_mode_enable_val,                                 // P3
+
+		// 恒星动态速度
+		star_dynamic_speed_enable:  star_dynamic_speed_enable_val,
+		star_dynamic_speed_min:     star_dynamic_speed_min_val,
+		star_dynamic_speed_freq:    star_dynamic_speed_freq_val,
+		star_dynamic_speed_counter: 0,
+
+		// 独立随机落点
+		random_start_enable:    random_start_enable_val,
+		random_start_radius_px: random_start_radius_px_val, // (未缩放)
+
+		// 行星
+		wheel_planet_enable:    wheel_planet_enable_val,
+		wheel_planet_radius_px: wheel_planet_radius_px_val,                               // (未缩放)
+		wheel_planet_speed:     wheel_planet_speed_val / MAIN_LOOP_HZ,                    // 转换为 弧度/帧
+		planet_angle:           0,
+
+		// 行星动态速度
+		planet_dynamic_speed_enable:  planet_dynamic_speed_enable_val,
+		planet_dynamic_speed_min:     planet_dynamic_speed_min_val,
+		planet_dynamic_speed_freq:    planet_dynamic_speed_freq_val,
+		planet_dynamic_speed_counter: 0,
+
+		// 行星曲线 (V1.2.3 新)
+		planet_curve_enable:    planet_curve_enable_val,
+		planet_curve_amount_px: planet_curve_amount_px_val, // (未缩放)
+		planet_curve_freq:      planet_curve_freq_val,      // [V1.2.4] freq 是乘数
+
+		// 恒星曲线 (V1.2.3 新)
+		star_curve_enable:    star_curve_enable_val,
+		star_curve_amount_px: star_curve_amount_px_val, // (未缩放)
+		star_curve_freq:      star_curve_freq_rad_val,  // (rad/frame)
+		star_curve_counter:   0,
+
+		// Shift 逻辑
+		shift_press_toggle:   config_json.Get("WHEEL").Get("SHIFT_PRESS_TOGGLE").MustBool(false),
+		shift_release_toggle: config_json.Get("WHEEL").Get("SHIFT_RELEASE_TOGGLE").MustBool(false),
+
+		wheel_star_x: 0,
+		wheel_star_y: 0,
+		// --- [移植 V1.4.1] P3, P8 初始化结束 ---
+
+		// --- [移植 V1.4.0] P2, P5, P6: 初始化 MOUSE 视角新配置 ---
+		view_auto_release_enable:       view_auto_release_enable_val,
+		view_auto_release_ms:           view_auto_release_ms_val,
+		view_reset_radius_enable:       view_reset_radius_enable_val,
+		view_reset_radius_px:           view_reset_radius_px_val,           // (未缩放)
+		view_reset_radius_thickness_px: view_reset_radius_thickness_px_val, // P2 (未缩放)
+		view_random_reset_enable:       view_random_reset_enable_val,
+		view_random_reset_radius_px:    view_random_reset_radius_px_val,    // (未缩放)
+		view_delay_reset_enable:        view_delay_reset_enable_val,        // P6
+		view_delay_reset_ms:            view_delay_reset_ms_val,            // P6
+		view_delay_reset_random_enable: view_delay_reset_random_enable_val, // P6
+		view_delay_reset_min_ms:        view_delay_reset_min_ms_val,        // P6
+		// --- [移植 V1.4.0] MOUSE 初始化结束 ---
+
+		// --- [移植 V1.4.0] P7: 初始化 SCROLL_SLIDER 滚轮滑块配置 ---
+		scroll_slider_enable:           scroll_slider_enable_val,
+		scroll_slider_init_x:           scroll_slider_init_x_val,   // (未缩放)
+		scroll_slider_init_y:           scroll_slider_init_y_val,   // (未缩放)
+		scroll_slider_bound_up:         scroll_slider_bound_up_val, // (未缩放)
+		scroll_slider_bound_down:       scroll_slider_bound_down_val, // (未缩放)
+		scroll_slider_timeout_duration: scroll_slider_timeout_duration_val,
+		scroll_slider_speed_px:         scroll_slider_speed_px_val, // (未缩放)
+		scroll_slider_random_enable:    scroll_slider_random_enable_val,
+		scroll_slider_random_radius_px: scroll_slider_random_radius_px_val, // (未缩放)
+		scroll_slider_curve_enable:     scroll_slider_curve_enable_val,
+		scroll_slider_curve_amount_px:  scroll_slider_curve_amount_px_val, // (未缩放)
+		scroll_slider_curve_freq:       scroll_slider_curve_freq_val,      // P7
+		scroll_slider_delay_reset_ms:   scroll_slider_delay_reset_ms_val,  // P7
+		scroll_slider_delay_random_enable: scroll_slider_delay_random_enable_val, // P7
+		scroll_slider_delay_reset_min_ms: scroll_slider_delay_reset_min_ms_val,  // P7
+		scroll_slider_dynamic_speed_enable: scroll_slider_dynamic_speed_enable_val, // P7
+		scroll_slider_dynamic_speed_min:    scroll_slider_dynamic_speed_min_val,    // P7
+		scroll_slider_dynamic_speed_freq:   scroll_slider_dynamic_speed_freq_val,   // P7
+		// --- [移植 V1.4.0] P7: SCROLL_SLIDER 状态 ---
+		scroll_slider_id:                 -1,
+		scroll_slider_current_y:          scroll_slider_init_y_val, // (未缩放)
+		scroll_slider_last_scroll_time:   time.Now(),
+		scroll_slider_last_reset_time:    time.Now(),
+		scroll_slider_dynamic_speed_counter: 0, // P7
+		scroll_slider_lock:               sync.Mutex{},
+		// --- [移植 V1.4.0] SCROLL_SLIDER 初始化结束 ---
+
+		// --- [移植 V1.3.5] P7: 初始化 粘滞按键 映射 ---
+		real_key_down_state: sync.Map{},
+		// --- [移植 V1.3.5] 结束 ---
 	}
 }
 
@@ -375,30 +788,36 @@ func (self *TouchHandler) reloadConfigure(mapperFilePath string) {
 	screenSizeY := config_json.Get("SCREEN").Get("SIZE").GetIndex(1).MustInt()
 	global_screen_x = int32(screenSizeX)
 	global_screen_y = int32(screenSizeY)
+	// [移植 V1.3.0] 转换为 float64 供后续计算
+	screenSizeX_f := float64(screenSizeX)
+	screenSizeY_f := float64(screenSizeY)
+
 	self.config = config_json
-	self.screen_x = int32(screenSizeX)
-	self.screen_y = int32(screenSizeY)
+
+	// --- [修改 V2.0.0] 坐标系转换 ---
+	self.screen_x = 0x7ffffffe
+	self.screen_y = 0x7ffffffe
 	self.rel_screen_x = int32(screenSizeX)
 	self.rel_screen_y = int32(screenSizeY)
-	self.view_init_x = int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX))
-	self.view_init_y = int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY))
-	self.view_current_x = int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX))
-	self.view_current_y = int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY))
-	self.view_speed_x = int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(0).MustFloat64() * 0x7ffffffe / float64(screenSizeX))
-	self.view_speed_y = int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(1).MustFloat64() * 0x7ffffffe / float64(screenSizeX))
-	self.wheel_init_x = int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX))
-	self.wheel_init_y = int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY))
-	self.wheel_range = int32(config_json.Get("WHEEL").Get("RANGE").MustFloat64() * float64(screenSizeX))
+	self.view_init_x = int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * 0x7ffffffe)
+	self.view_init_y = int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * 0x7ffffffe)
+	self.view_current_x = int32(config_json.Get("MOUSE").Get("POS").GetIndex(0).MustFloat64() * 0x7ffffffe)
+	self.view_current_y = int32(config_json.Get("MOUSE").Get("POS").GetIndex(1).MustFloat64() * 0x7ffffffe)
+	self.view_speed_x = int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(0).MustFloat64() * 0x7ffffffe / screenSizeX_f)
+	self.view_speed_y = int32(config_json.Get("MOUSE").Get("SPEED").GetIndex(1).MustFloat64() * 0x7ffffffe / screenSizeX_f)
+	// --- [修改 V2.0.0] 坐标系转换结束 ---
+
+	self.wheel_init_x = int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * screenSizeX_f) // (未缩放)
+	self.wheel_init_y = int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * screenSizeY_f) // (未缩放)
+	self.wheel_range = int32(config_json.Get("WHEEL").Get("RANGE").MustFloat64() * screenSizeX_f)           // (未缩放)
 	self.wheel_wasd = []string{
 		config_json.Get("WHEEL").Get("WASD").GetIndex(0).MustString(),
 		config_json.Get("WHEEL").Get("WASD").GetIndex(1).MustString(),
 		config_json.Get("WHEEL").Get("WASD").GetIndex(2).MustString(),
 		config_json.Get("WHEEL").Get("WASD").GetIndex(3).MustString(),
 	}
-	self.wasd_wheel_last_x = int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * float64(screenSizeX))
-	self.wasd_wheel_last_y = int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * float64(screenSizeY))
-	// self.KEYBOARD_SWITCH_KEY_NAME = config_json.Get("MOUSE").Get("SWITCH_KEY").MustString()
-	// self.KEYBOARD_SWITCH_KEY_NAME_S = config_json.Get("MOUSE").Get("SWITCH_KEYS").MustStringArray()
+	self.wasd_wheel_last_x = int32(config_json.Get("WHEEL").Get("POS").GetIndex(0).MustFloat64() * screenSizeX_f) // (未缩放)
+	self.wasd_wheel_last_y = int32(config_json.Get("WHEEL").Get("POS").GetIndex(1).MustFloat64() * screenSizeY_f) // (未缩放)
 	self.KEYBOARD_SWITCH_KEY_NAME_S = make(map[string]bool)
 	for _, key := range config_json.Get("MOUSE").Get("SWITCH_KEYS").MustStringArray() {
 		if key != "" {
@@ -408,17 +827,122 @@ func (self *TouchHandler) reloadConfigure(mapperFilePath string) {
 		}
 	}
 
-	self.wheel_shift_enable = config_json.Get("WHEEL").Get("SHIFT_RANGE_ENABLE").MustBool()
-	self.wheel_shift_range = int32(config_json.Get("WHEEL").Get("SHIFT_RANGE").MustFloat64() * float64(screenSizeX))
+	self.wheel_shift_enable = config_json.Get("WHEEL").Get("SHIFT_RANGE_ENABLE").MustBool(false)
+	self.wheel_shift_range = int32(config_json.Get("WHEEL").Get("SHIFT_RANGE").MustFloat64() * screenSizeX_f) // (未缩放)
+
+	// --- [移植 V1.1.2] 安全加载 KEY_JITTER ---
+	if keyJitterJSON, ok := config_json.CheckGet("KEY_JITTER"); ok {
+		self.key_jitter_enable = keyJitterJSON.Get("ENABLE").MustBool(true)
+		self.key_jitter_amount_px = int32(keyJitterJSON.Get("AMOUNT").MustFloat64(0.003) * screenSizeX_f) // (未缩放)
+	} else {
+		self.key_jitter_enable = true
+		self.key_jitter_amount_px = int32(0.003 * screenSizeX_f) // (未缩放)
+	}
+	// --- [移植 V1.1.2] 结束 ---
+
+	// --- [移植 V1.4.1] P3, P8: 重新加载轮盘高级配置 ---
+	wheel_cfg := config_json.Get("WHEEL")
+	self.wheel_step_speed = wheel_cfg.Get("STEP_SPEED").MustFloat64(60)
+	self.wheel_delay_reset_duration = time.Duration(wheel_cfg.Get("DELAY_RESET_MS").MustInt(50)) * time.Millisecond // P8
+	self.wheel_last_input_time = time.Now()                                                                         // P8
+	self.wheel_walk_mode_enable = wheel_cfg.Get("WALK_MODE_ENABLE").MustBool(false)                                 // P3
+
+	// 恒星动态速度
+	self.star_dynamic_speed_enable = wheel_cfg.Get("STAR_DYNAMIC_SPEED").Get("ENABLE").MustBool(false)
+	self.star_dynamic_speed_min = wheel_cfg.Get("STAR_DYNAMIC_SPEED").Get("MIN_SPEED").MustFloat64(10.0)
+	self.star_dynamic_speed_freq = wheel_cfg.Get("STAR_DYNAMIC_SPEED").Get("FREQUENCY").MustFloat64(1.0)
+
+	// 独立随机落点
+	self.random_start_enable = wheel_cfg.Get("RANDOM_START").Get("ENABLE").MustBool(false)
+	self.random_start_radius_px = int32(wheel_cfg.Get("RANDOM_START").Get("RADIUS").MustFloat64(0.01) * screenSizeX_f) // (未缩放)
+
+	// 行星
+	self.wheel_planet_enable = wheel_cfg.Get("WHEEL_PLANET").Get("ENABLE").MustBool(false)
+	self.wheel_planet_radius_px = int32(wheel_cfg.Get("WHEEL_PLANET").Get("RADIUS").MustFloat64(0.015) * screenSizeX_f) // (未缩放)
+	self.wheel_planet_speed = wheel_cfg.Get("WHEEL_PLANET").Get("SPEED").MustFloat64(1.5) / MAIN_LOOP_HZ                 // 转换为 弧度/帧
+
+	// 行星动态速度
+	self.planet_dynamic_speed_enable = wheel_cfg.Get("WHEEL_PLANET").Get("PLANET_DYNAMIC_SPEED").Get("ENABLE").MustBool(false)
+	self.planet_dynamic_speed_min = wheel_cfg.Get("WHEEL_PLANET").Get("PLANET_DYNAMIC_SPEED").Get("MIN_SPEED").MustFloat64(0.5)
+	self.planet_dynamic_speed_freq = wheel_cfg.Get("WHEEL_PLANET").Get("PLANET_DYNAMIC_SPEED").Get("FREQUENCY").MustFloat64(1.0)
+
+	// 行星曲线 (V1.2.3 新)
+	self.planet_curve_enable = wheel_cfg.Get("PLANET_CURVE").Get("ENABLE").MustBool(false)
+	self.planet_curve_amount_px = int32(wheel_cfg.Get("PLANET_CURVE").Get("CURVE_AMOUNT").MustFloat64(0.005) * screenSizeX_f) // (未缩放)
+	planet_curve_freq_val := wheel_cfg.Get("PLANET_CURVE").Get("CURVE_FREQUENCY").MustFloat64(1.0)
+	self.planet_curve_freq = planet_curve_freq_val // [V1.2.4] freq 是乘数
+
+	// 恒星曲线 (V1.2.3 新)
+	self.star_curve_enable = wheel_cfg.Get("STAR_CURVE").Get("ENABLE").MustBool(false)
+	self.star_curve_amount_px = int32(wheel_cfg.Get("STAR_CURVE").Get("CURVE_AMOUNT").MustFloat64(0.002) * screenSizeX_f) // (未缩放)
+	star_curve_freq_val := wheel_cfg.Get("STAR_CURVE").Get("CURVE_FREQUENCY").MustFloat64(1.0)
+	self.star_curve_freq = (star_curve_freq_val * 2 * math.Pi) / MAIN_LOOP_HZ // 转换为 弧度/帧
+
+	// Shift 逻辑
+	self.shift_press_toggle = wheel_cfg.Get("SHIFT_PRESS_TOGGLE").MustBool(false)
+	self.shift_release_toggle = wheel_cfg.Get("SHIFT_RELEASE_TOGGLE").MustBool(false)
+	// --- [移植 V1.4.1] P3, P8 重新加载结束 ---
+
+	// --- [移植 V1.4.0] P2, P5, P6: 重新加载 MOUSE 视角新配置 ---
+	mouse_cfg := config_json.Get("MOUSE")
+	self.view_auto_release_enable = mouse_cfg.Get("VIEW_AUTO_RELEASE_ENABLE").MustBool(false) // P5
+	self.view_auto_release_ms = mouse_cfg.Get("VIEW_AUTO_RELEASE_MS").MustInt(200)             // P5
+	self.view_reset_radius_enable = mouse_cfg.Get("VIEW_RESET_RADIUS_ENABLE").MustBool(false)
+	self.view_reset_radius_px = int32(mouse_cfg.Get("VIEW_RESET_RADIUS").MustFloat64(0.1) * screenSizeX_f) // (未缩放)
+	self.view_reset_radius_thickness_px = int32(mouse_cfg.Get("VIEW_RESET_RADIUS_THICKNESS").MustFloat64(0.005) * screenSizeX_f) // P2 (未缩放)
+	self.view_random_reset_enable = mouse_cfg.Get("VIEW_RANDOM_RESET_ENABLE").MustBool(false)
+	self.view_random_reset_radius_px = int32(mouse_cfg.Get("VIEW_RANDOM_RESET_RADIUS").MustFloat64(0.01) * screenSizeX_f) // (未缩放)
+	self.view_delay_reset_enable = mouse_cfg.Get("VIEW_DELAY_RESET_ENABLE").MustBool(false)    // P6
+	self.view_delay_reset_ms = mouse_cfg.Get("VIEW_DELAY_RESET_MS").MustInt(20)                 // P6
+	self.view_delay_reset_random_enable = mouse_cfg.Get("VIEW_DELAY_RESET_RANDOM_ENABLE").MustBool(false) // P6
+	self.view_delay_reset_min_ms = mouse_cfg.Get("VIEW_DELAY_RESET_MIN_MS").MustInt(10)        // P6
+	// --- [移植 V1.4.0] MOUSE 重新加载结束 ---
+
+	// --- [移植 V1.4.0] P7: 重新加载 SCROLL_SLIDER 滚轮滑块配置 ---
+	scroll_cfg := config_json.Get("SCROLL_SLIDER")
+	self.scroll_slider_enable = scroll_cfg.Get("ENABLE").MustBool(false)
+	self.scroll_slider_init_x = int32(scroll_cfg.Get("POS").GetIndex(0).MustFloat64(0.9) * screenSizeX_f)    // (未缩放)
+	self.scroll_slider_init_y = int32(scroll_cfg.Get("POS").GetIndex(1).MustFloat64(0.5) * screenSizeY_f)    // (未缩放)
+	self.scroll_slider_bound_up = self.scroll_slider_init_y - int32(scroll_cfg.Get("LENGTH_UP").MustFloat64(0.2)*screenSizeY_f)    // (未缩放)
+	self.scroll_slider_bound_down = self.scroll_slider_init_y + int32(scroll_cfg.Get("LENGTH_DOWN").MustFloat64(0.2)*screenSizeY_f) // (未缩放)
+	self.scroll_slider_timeout_duration = time.Duration(scroll_cfg.Get("TIMEOUT_S").MustFloat64(3.0) * float64(time.Second))
+	// (未缩放) 速度 1.0 = 1% 屏幕高度
+	scroll_slider_speed_val := scroll_cfg.Get("SPEED").MustFloat64(1.0)
+	self.scroll_slider_speed_px = int32(scroll_slider_speed_val * 0.01 * screenSizeY_f)
+	self.scroll_slider_random_enable = scroll_cfg.Get("RANDOM_START_ENABLE").MustBool(false)
+	self.scroll_slider_random_radius_px = int32(scroll_cfg.Get("RANDOM_START_RADIUS").MustFloat64(0.005) * screenSizeX_f) // (未缩放)
+	self.scroll_slider_curve_enable = scroll_cfg.Get("CURVE_ENABLE").MustBool(false)
+	self.scroll_slider_curve_amount_px = int32(scroll_cfg.Get("CURVE_AMOUNT").MustFloat64(0.005) * screenSizeX_f) // (未缩放)
+	self.scroll_slider_curve_freq = scroll_cfg.Get("CURVE_FREQUENCY").MustFloat64(1.0)    // P7
+	self.scroll_slider_delay_reset_ms = scroll_cfg.Get("DELAY_RESET_MS").MustInt(20)       // P7
+	self.scroll_slider_delay_random_enable = scroll_cfg.Get("DELAY_RANDOM_ENABLE").MustBool(false) // P7
+	self.scroll_slider_delay_reset_min_ms = scroll_cfg.Get("DELAY_RESET_MIN_MS").MustInt(10) // P7
+	self.scroll_slider_dynamic_speed_enable = scroll_cfg.Get("DYNAMIC_SPEED_ENABLE").MustBool(false) // P7
+	self.scroll_slider_dynamic_speed_min = scroll_cfg.Get("DYNAMIC_SPEED_MIN").MustFloat64(0.5) // P7
+	self.scroll_slider_dynamic_speed_freq = scroll_cfg.Get("DYNAMIC_SPEED_FREQ").MustFloat64(1.0) // P7
+	// --- [移植 V1.4.0] P7: SCROLL_SLIDER 重置状态 ---
+	self.scroll_slider_id = -1
+	self.scroll_slider_current_y = self.scroll_slider_init_y // (未缩放)
+	self.scroll_slider_last_scroll_time = time.Now()
+	self.scroll_slider_last_reset_time = time.Now()
+	self.scroll_slider_dynamic_speed_counter = 0 // P7
+	// --- [移植 V1.4.0] SCROLL_SLIDER 重新加载结束 ---
 }
 
+// --- [修改 V2.0.0] 坐标系转换 ---
+// get_scaled_pos 将 未缩放 像素坐标 (e.g., 1440x3200) 转换为 0x7ffffffe 坐标
 func (self *TouchHandler) get_scaled_pos(x int32, y int32) (int32, int32) {
 	return int32(int64(x) * 0x7ffffffe / int64(self.rel_screen_x)), int32(int64(y) * 0x7ffffffe / int64(self.rel_screen_y))
 }
 
+// --- [修改 V2.0.0] 坐标系转换 ---
+// touch_require 现在接收一个 'scale' 布尔值
+// true: x, y 是 未缩放 像素, 需要转换为 0x7ffffffe
+// false: x, y 已经是 0x7ffffffe
 func (self *TouchHandler) touch_require(x int32, y int32, scale bool) int32 {
-	self.touch_control_lock.Lock()
-	defer self.touch_control_lock.Unlock()
+	self.id_alloc_lock.Lock() // [移植 V1.4.1] P1
+	defer self.id_alloc_lock.Unlock()
+
 	for i, v := range self.allocated_id {
 		if !v {
 			self.allocated_id[i] = true
@@ -435,17 +959,22 @@ func (self *TouchHandler) touch_require(x int32, y int32, scale bool) int32 {
 	return -1
 }
 
+// --- [修改 V2.0.0] 坐标系转换 ---
 func (self *TouchHandler) touch_release(id int32) int32 {
-	self.touch_control_lock.Lock()
-	defer self.touch_control_lock.Unlock()
 	logger.Debugf("touch release [%v]", id)
 	if id != -1 {
-		self.allocated_id[int(id)] = false
-		self.send_touch_control_pack(TouchActionRelease, id, -1, -1)
+		self.id_alloc_lock.Lock() // [移植 V1.4.1] P1
+		// P1: 增加边界检查和状态检查, 确保安全
+		if id >= 0 && id < int32(len(self.allocated_id)) && self.allocated_id[int(id)] {
+			self.allocated_id[int(id)] = false
+			self.send_touch_control_pack(TouchActionRelease, id, -1, -1)
+		}
+		self.id_alloc_lock.Unlock() // [移植 V1.4.1] P1
 	}
 	return -1
 }
 
+// --- [修改 V2.0.0] 坐标系转换 ---
 func (self *TouchHandler) touch_move(id int32, x int32, y int32, scale bool) {
 	self.touch_control_lock.Lock()
 	defer self.touch_control_lock.Unlock()
@@ -470,16 +999,133 @@ func (self *TouchHandler) u_input_control(action int8, arg1 int32, arg2 int32) {
 }
 
 func (self *TouchHandler) send_touch_control_pack(action int8, id int32, x int32, y int32) {
+	// self.touch_control_lock.Lock() // touch_move 和 touch_require 已经有锁了
+	// defer self.touch_control_lock.Unlock()
 	self.touch_control_func(touch_control_pack{
-		action:   action,
-		id:       id,
-		x:        x,
-		y:        y,
+		action: action,
+		id:     id,
+		x:      x,
+		y:      y,
+		// --- [修改 V2.0.0] 坐标系转换 ---
+		// 传递 0x7ffffffe (screen_x) 以适配 v4.0.1 的 inputmanager
 		screen_x: self.screen_x,
 		screen_y: self.screen_y,
+		// --- [修改 V2.0.0] 坐标系转换结束 ---
 	})
 }
 
+// --- [移植 V1.2.5] 行星轮盘循环 ---
+func (self *TouchHandler) get_planet_pos() (int32, int32) {
+	// 1. 获取恒星位置 (恒星位置已在 handel_wheel_action 中包含了 "Star Curve")
+	final_star_x := self.wheel_star_x
+	final_star_y := self.wheel_star_y
+
+	// 2. 如果行星功能关闭，直接返回恒星位置
+	if !self.wheel_planet_enable {
+		return final_star_x, final_star_y
+	}
+
+	// 3. 计算行星动态速度
+	var current_planet_speed float64
+	if self.planet_dynamic_speed_enable {
+		min_speed_rad_per_frame := (self.planet_dynamic_speed_min / MAIN_LOOP_HZ)
+		current_planet_speed = self.get_dynamic_speed(
+			self.wheel_planet_speed, // Max speed (rad/frame)
+			min_speed_rad_per_frame, // Min speed (rad/frame)
+			self.planet_dynamic_speed_freq,
+			&self.planet_dynamic_speed_counter,
+		)
+	} else {
+		current_planet_speed = self.wheel_planet_speed
+	}
+
+	// 4. 增加行星主角度
+	self.planet_angle += current_planet_speed
+	if self.planet_angle > 2*math.Pi {
+		self.planet_angle -= 2 * math.Pi
+	}
+
+	// 5. [V1.2.3-Final] 检查是否启用“行星曲线” (扁平线模式)
+	if self.planet_curve_enable && self.planet_curve_amount_px > 0 {
+		// --- “扁平线”模式 (来自 V1.2.5) ---
+		// [V1.2.4] 使用行星自己的角度 (planet_angle) 乘以频率 (乘数)
+		curve_calc_angle := self.planet_angle * self.planet_curve_freq
+		curve_amount_float := float64(self.planet_curve_amount_px)
+
+		// [V1.2.5] 曲线(幅度) *成为* 半径, 在 [-幅度, +幅度] 之间波动
+		// 使用 Sin 和 Cos 叠加，制造不规则但平滑的波动
+		final_radius := (math.Sin(curve_calc_angle*1.7)*0.5 + math.Cos(curve_calc_angle*0.9)*0.5) * curve_amount_float
+
+		// [V1.2.5] 角度 *是* 行星的主角度 (使这条线旋转)
+		final_angle := self.planet_angle
+
+		// 7. [V1.2.5] 转换为笛卡尔坐标
+		planet_x := final_star_x + int32(final_radius*math.Cos(final_angle))
+		planet_y := final_star_y + int32(final_radius*math.Sin(final_angle))
+		return planet_x, planet_y
+
+	} else {
+		// --- 正常“圆形”模式 ---
+		final_radius := float64(self.wheel_planet_radius_px)
+		final_angle := self.planet_angle
+
+		// 7. [V1.2.5] 转换为笛卡尔坐标
+		planet_x := final_star_x + int32(final_radius*math.Cos(final_angle))
+		planet_y := final_star_y + int32(final_radius*math.Sin(final_angle))
+		return planet_x, planet_y
+	}
+}
+
+// [移植 V1.0.0] 行星循环
+func (self *TouchHandler) loop_handel_wheel_planet() {
+	for {
+		select {
+		case <-global_close_signal:
+			return
+		default:
+			// 仅在轮盘被按下时 (wheel_id != -1) 才执行移动
+			if self.wheel_id != -1 {
+				self.wheel_lock.Lock()
+				if self.wheel_id != -1 {
+					// [V1.2.3-Final] get_planet_pos() 已包含最新曲线算法
+					final_x, final_y := self.get_planet_pos()
+					// --- [修改 V2.0.0] 坐标系转换 ---
+					// (final_x, final_y 是未缩放像素, 设为 true)
+					self.touch_move(self.wheel_id, final_x, final_y, true)
+					// --- [修改 V2.0.0] 坐标系转换结束 ---
+				}
+				self.wheel_lock.Unlock()
+			}
+			// 必须休眠，否则会占用100% CPU
+			time.Sleep(time.Duration(MAIN_LOOP_NS_INT) * time.Nanosecond) // 250Hz
+		}
+	}
+}
+
+// --- [移植 V1.3.1] 滚轮滑块：自动释放循环 ---
+func (self *TouchHandler) loop_auto_release_scroll_slider() {
+	for {
+		select {
+		case <-global_close_signal:
+			return
+		default:
+			self.scroll_slider_lock.Lock()
+			// 检查是否需要释放 (例如 50ms 未收到新滚动事件)
+			// [V1.4.1] P1: 仅在 ID >= 0 (真实触点) 时检查
+			if self.scroll_slider_id >= 0 {
+				if time.Since(self.scroll_slider_last_scroll_time) > time.Millisecond*50 {
+					self.scroll_slider_id = self.touch_release(self.scroll_slider_id)
+				}
+			}
+			self.scroll_slider_lock.Unlock()
+			time.Sleep(time.Duration(20) * time.Millisecond) // 每 20ms 检查一次
+		}
+	}
+}
+
+// --- [移植 V1.3.1] 结束 ---
+
+// [移植 V1.1.0]
 func (self *TouchHandler) loop_handel_rs_move() {
 	for {
 		select {
@@ -494,11 +1140,77 @@ func (self *TouchHandler) loop_handel_rs_move() {
 					self.u_input_control(UInput_mouse_move, int32((rs_x-0.5)*24), int32((rs_y-0.5)*24))
 				}
 			}
-			time.Sleep(time.Duration(4) * time.Millisecond) //250HZ
+			time.Sleep(time.Duration(MAIN_LOOP_NS_INT) * time.Nanosecond) // [修改 V1.1.0] 250HZ
 		}
 	}
 }
 
+// --- [移植 V1.4.0] P6: 延迟视角触点 ---
+func (self *TouchHandler) delayed_view_require() {
+	// 仅在 view_id 为 -1 (已释放) 时才启动
+	if self.view_id != -1 {
+		return
+	}
+
+	// 标记为 "即将按下" (用 -2), 防止重复调用
+	self.view_id = -2
+
+	go (func() {
+		// 1. 计算延迟
+		var delay time.Duration
+		if self.view_delay_reset_enable {
+			delay = self.get_delay_ms(
+				self.view_delay_reset_ms,
+				self.view_delay_reset_min_ms,
+				self.view_delay_reset_random_enable,
+			)
+			time.Sleep(delay)
+		}
+
+		self.view_lock.Lock()
+		defer self.view_lock.Unlock()
+
+		// 2. 检查在延迟期间是否被取消 (例如切换了映射)
+		if self.view_id != -2 {
+			return // 状态已改变, 中止
+		}
+
+		// 3. 应用随机重置 (如果启用)
+		// (仅在此时应用, 确保触点出现在随机位置)
+		self.reset_view_position(self.view_current_x, self.view_current_y)
+
+		// 4. 按下触点
+		// --- [修改 V2.0.0] 坐标系转换 ---
+		// (self.view_current_x 已经是 0x7ffffffe, 设为 false)
+		self.view_id = self.touch_require(self.view_current_x, self.view_current_y, false)
+		// --- [修改 V2.0.0] 坐标系转换结束 ---
+	})()
+}
+
+// --- [移植 V1.4.0] P6 结束 ---
+
+// --- [移植 V1.3.0] 视角重置辅助函数 ---
+// (接收 已缩放 0x7ffffffe 坐标)
+// (修改 V1.4.0 P6: 不再负责按下, 只负责计算坐标)
+// --- [修改 V2.0.0] 坐标系转换 ---
+func (self *TouchHandler) reset_view_position(new_x int32, new_y int32) {
+	final_x, final_y := new_x, new_y
+
+	// 1. 应用随机重置
+	if self.view_random_reset_enable {
+		// get_random_offset 返回 (未缩放) 像素坐标
+		offset_x, offset_y := self.get_random_offset(self.view_random_reset_radius_px)
+		// 转换为 (已缩放 0x7ffffffe) 偏移
+		final_x += int32(int64(offset_x) * 0x7ffffffe / int64(self.rel_screen_x))
+		final_y += int32(int64(offset_y) * 0x7ffffffe / int64(self.rel_screen_y))
+	}
+
+	// 2. 更新当前坐标
+	self.view_current_x = final_x
+	self.view_current_y = final_y
+}
+
+// --- [修改 V2.0.0] 移植 v1.4.0 的视角移动逻辑, 适配 0x7ffffffe 坐标系 ---
 func (self *TouchHandler) handel_view_move(offset_x int32, offset_y int32) { //视角移动
 	self.view_lock.Lock()
 	defer self.view_lock.Unlock()
@@ -507,66 +1219,184 @@ func (self *TouchHandler) handel_view_move(offset_x int32, offset_y int32) { //�
 		self.total_move_y += offset_y
 		logger.Infof("total_move_x:%v\ttotal_move_y:%v", self.total_move_x, self.total_move_y)
 	}
-	self.auto_release_view_count = 0
+	self.auto_release_view_counter = 0 // [移植 V1.3.0] 重命名
+
+	// --- [移植 V1.4.0] P6: 延迟触点 ---
 	if self.view_id == -1 {
-		self.view_current_x, self.view_current_y = self.get_scaled_pos(self.view_init_x+rand_offset(), self.view_init_y+rand_offset())
-		self.view_id = self.touch_require(self.view_current_x, self.view_current_y, false)
+		// (状态为 -1, 意味着可以安全启动延迟)
+		self.delayed_view_require()
 	}
+	// --- [移植 V1.4.0] P6 结束 ---
+
 	self.view_current_x += offset_x * self.view_speed_x
 	self.view_current_y += offset_y * self.view_speed_y
-	if self.view_current_x < 0 || self.view_current_y < 0 { //出现负数 表示到达边界
-		self.view_current_x, self.view_current_y = self.get_scaled_pos(self.view_init_x+rand_offset(), self.view_init_y+rand_offset())
-		tmp_view_id := self.touch_require(self.view_current_x, self.view_current_y, false)
-		self.view_current_x += offset_x * self.view_speed_x
-		self.view_current_y += offset_y * self.view_speed_y
-		self.touch_move(tmp_view_id, self.view_current_x, self.view_current_y, false)
-		self.touch_release(self.view_id)
-		self.view_id = tmp_view_id
-	} else {
-		self.touch_move(self.view_id, self.view_current_x, self.view_current_y, false)
-	}
 
-}
+	// --- v4.0.1 移除了 view_range_limited, 我们假定所有 uinput/inputmanager 都是有界的
+	// --- 并且 hid/otg/direct 是无界的 (由 global_is_wordking_remote 控制)
+	// --- v_mouse 也是有界的。
+	// --- 你的分支 v1.4.0 (基于 v2.2.0) 依赖 view_range_limited, 它在 v2.0.0 的 main.go 中被移除了
+	// --- 我们重新采用 v4.0.1 的逻辑: 检查 global_is_wordking_remote
+	if !global_is_wordking_remote { // 有界 (uinput, inputmanager, v_mouse)
+		var reset_required bool = false
 
-func (self *TouchHandler) auto_handel_view_release(timeout int) { //视角释放
-	if timeout == 0 {
-		return
-	} else {
-		for {
-			select {
-			case <-global_close_signal:
-				return
-			default:
-				self.view_lock.Lock()
-				if self.view_id != -1 {
-					self.auto_release_view_count += 1
-					if self.auto_release_view_count > int32(timeout/50) { //200ms不动 则释放
-						self.auto_release_view_count = 0
-						self.view_id = self.touch_release(self.view_id)
-					}
-				}
-				self.view_lock.Unlock()
-				time.Sleep(time.Duration(50) * time.Millisecond)
+		// --- [移植 V1.3.5] P3: 屏幕边缘重置 (始终启用) ---
+		// (坐标系已改为 0x7ffffffe)
+		if self.view_current_x <= 0 || self.view_current_x >= self.screen_x || self.view_current_y <= 0 || self.view_current_y >= self.screen_y {
+			reset_required = true
+		}
+		// --- [移植 V1.3.5] P3 结束 ---
+
+		// --- [移植 V1.4.0] P1, P2: "圆环"重置 (仅在未被屏幕边缘重置时检查) ---
+		if !reset_required && self.view_reset_radius_enable {
+			// (坐标已缩放 0x7ffffffe, 半径需要转换为未缩放进行比较)
+			// (将 0x7ffffffe 距离转回 像素距离)
+			dist_x_scaled := self.view_current_x - self.view_init_x
+			dist_y_scaled := self.view_current_y - self.view_init_y
+			dist_x_rel := int32(int64(dist_x_scaled) * int64(self.rel_screen_x) / 0x7ffffffe) // (未缩放) 距离
+			dist_y_rel := int32(int64(dist_y_scaled) * int64(self.rel_screen_y) / 0x7ffffffe) // (未缩放) 距离
+			dist_sq := float64(dist_x_rel*dist_x_rel + dist_y_rel*dist_y_rel)
+
+			// (半径和厚度都是未缩放的)
+			radius_px := self.view_reset_radius_px
+			thickness_px := self.view_reset_radius_thickness_px
+
+			// 计算"圆环"的内径和外径
+			inner_radius := radius_px - thickness_px
+			if inner_radius < 0 {
+				inner_radius = 0 // 防止厚度大于半径
+			}
+
+			inner_radius_sq := float64(inner_radius * inner_radius)
+			outer_radius_sq := float64(radius_px * radius_px)
+
+			// 检查是否在"圆环"内
+			if dist_sq >= inner_radius_sq && dist_sq <= outer_radius_sq {
+				reset_required = true
 			}
 		}
+		// --- [移植 V1.4.0] P1, P2 结束 ---
+
+		if reset_required {
+			// --- [移植 V1.4.0] P6: 延迟重置 ---
+			// 1. 释放当前触点
+			if self.view_id >= 0 { // (>=0 意味着是真实触点, -2 意味着正在延迟)
+				self.view_id = self.touch_release(self.view_id)
+			}
+			self.view_id = -1 // 标记为已释放
+
+			// 2. 重置逻辑坐标 (使用 0x7ffffffe 坐标)
+			self.reset_view_position(self.view_init_x, self.view_init_y)
+
+			// 3. 启动延迟按下 (它将在延迟后, 在新位置按下)
+			self.delayed_view_require()
+			// --- [移植 V1.4.0] P6 结束 ---
+
+		} else {
+			// 未重置, 正常移动
+			if self.view_id >= 0 { // (只在真实触点存在时才移动)
+				// (坐标已经是 0x7ffffffe, 设为 false)
+				self.touch_move(self.view_id, self.view_current_x, self.view_current_y, false)
+			}
+		}
+
+	} else { // 无界 (hid, otg, direct)
+		if self.view_id >= 0 { // (只在真实触点存在时才移动)
+			// (坐标已经是 0x7ffffffe, 设为 false)
+			self.touch_move(self.view_id, self.view_current_x, self.view_current_y, false)
+		}
 	}
 }
 
+// [移植 V1.4.1] P2, P4, P5: 修复自动释放配置无效 和 位置不重置 的 BUG
+func (self *TouchHandler) auto_handel_view_release() { //视角释放
+	for {
+		select {
+		case <-global_close_signal:
+			return
+		default:
+			// --- [移植 V1.3.5] P4: 将配置读取移入循环, 使其可热重载 ---
+			timeout := self.view_auto_release_ms
+			enable := self.view_auto_release_enable
+			// --- [移植 V1.3.5] P4 结束 ---
+
+			if !enable { // P5: 检查开关
+				time.Sleep(time.Duration(200) * time.Millisecond) // 如果禁用, 睡眠更久以减少 CPU 占用
+				continue
+			}
+
+			if timeout > 0 {
+				self.view_lock.Lock()
+				if self.view_id >= 0 { // (只在真实触点存在时才计时)
+					self.auto_release_view_counter += 1 // [移植 V1.3.0] 重命名
+					// (50ms 检查一次)
+					if self.auto_release_view_counter > int32(timeout/50) {
+						self.auto_release_view_counter = 0 // [移植 V1.3.0] 重命名
+						self.view_id = self.touch_release(self.view_id)
+						// --- [移植 V1.4.1] P2: 修复位置不重置BUG ---
+						// 释放后, 立即重置逻辑坐标 (使用 0x7ffffffe 坐标)
+						self.reset_view_position(self.view_init_x, self.view_init_y)
+						// --- [移植 V1.4.1] P2 结束 ---
+					}
+				} else {
+					// (如果触点ID为 -1 或 -2, 重置计时器)
+					self.auto_release_view_counter = 0
+				}
+				self.view_lock.Unlock()
+			}
+			time.Sleep(time.Duration(50) * time.Millisecond) // 50ms 检查周期
+		}
+	}
+}
+
+// [移植 V1.2.3] 轮盘核心逻辑重构 (修复“直线”BUG 和 实现“随机落点”)
+// --- [修改 V2.0.0] 坐标系转换 ---
 func (self *TouchHandler) handel_wheel_action(action int8, abs_x int32, abs_y int32) {
 	self.wheel_lock.Lock()
-	if action == Wheel_action_release { //释放
-		if self.wheel_id != -1 {
-			self.wheel_id = self.touch_release(self.wheel_id)
+	defer self.wheel_lock.Unlock()
+
+	// (abs_x, abs_y 是 未缩放 像素坐标)
+
+	if action == 1 { // 移动 (Wheel_action_move)
+		// --- [移植 V1.4.0] P8: 更新输入时间 ---
+		self.wheel_last_input_time = time.Now()
+		// --- [移植 V1.4.0] P8 结束 ---
+
+		// [移植 V1.2.1] 按下逻辑
+		if self.wheel_id == -1 {
+			press_x, press_y := abs_x, abs_y
+
+			// [移植 V1.2.1] 检查是否启用“随机落点”
+			if self.random_start_enable {
+				// [移植 V1.3.0] 使用新的 get_random_offset 辅助函数
+				offset_x, offset_y := self.get_random_offset(self.random_start_radius_px)
+				press_x = self.wheel_init_x + offset_x
+				press_y = self.wheel_init_y + offset_y
+			}
+
+			// 1. [移植 V1.2.1] 先设置“恒星”位置 (V1.2.3: 已包含 Star Curve)
+			self.wheel_star_x = press_x
+			self.wheel_star_y = press_y
+
+			// 2. [移植 V1.2.1] 重置行星角度
+			self.planet_angle = 0 // 重置角度
+
+			// 3. [移植 V1.2.1] 立即计算最终的抖动/行星位置
+			final_x, final_y := self.get_planet_pos()
+
+			// 4. [移植 V1.2.1] 在最终位置按下触点，修复“直线”BUG
+			// (final_x, final_y 是未缩放像素, 设为 true)
+			self.wheel_id = self.touch_require(final_x, final_y, true)
+
+		} else { // [移植 V1.2.1] 移动逻辑
+			// 仅更新“恒星”位置 (V1.2.3: 已包含 Star Curve)
+			self.wheel_star_x = abs_x
+			self.wheel_star_y = abs_y
 		}
-	} else if action == Wheel_action_move { //移动
-		if self.wheel_id == -1 { //如果在移动之前没有按下
-			self.wheel_id = self.touch_require(self.wheel_init_x, self.wheel_init_y, true)
-		}
-		self.touch_move(self.wheel_id, abs_x, abs_y, true)
 	}
-	self.wheel_lock.Unlock()
+	// (释放 逻辑在 loop_handel_wasd_wheel 中处理)
 }
 
+// [移植 V1.4.1] P3: 静步模式
 func (self *TouchHandler) get_wasd_now_target() (int32, int32) { //根据wasd当前状态 获取wasd滚轮的目标位置
 	var x int32 = 0
 	var y int32 = 0
@@ -583,60 +1413,131 @@ func (self *TouchHandler) get_wasd_now_target() (int32, int32) { //根据wasd当
 		x += 1
 	}
 
-	wheel_range := self.wheel_range
-	if self.wasd_up_down_statues[4] {
+	// --- [移植 V1.4.1] P3: 静步模式 ---
+	shift_pressed := self.wasd_up_down_statues[4]
+	walk_mode := self.wheel_walk_mode_enable
+
+	// 核心逻辑: (A AND NOT B) OR (NOT A AND B)
+	is_in_shift_range := (shift_pressed && !walk_mode) || (!shift_pressed && walk_mode)
+
+	var wheel_range int32
+	if is_in_shift_range {
 		wheel_range = self.wheel_shift_range
+	} else {
+		wheel_range = self.wheel_range
 	}
+	// --- [移植 V1.4.1] P3 结束 ---
 
 	if x*y == 0 {
-		// logger.Warnf("%v  %v", self.wheel_init_x+x*wheel_range, self.wheel_init_y+y*wheel_range)
 		return self.wheel_init_x + x*wheel_range, self.wheel_init_y + y*wheel_range
 	} else {
-		// logger.Warnf("%v  %v", self.wheel_init_x+x*wheel_range*707/1000, self.wheel_init_y+y*wheel_range*707/1000)
+		// [移植 V1.2.3-Final] 此处使用原版 707/1000 逻辑
 		return self.wheel_init_x + x*wheel_range*707/1000, self.wheel_init_y + y*wheel_range*707/1000
 	}
 }
 
-const wheel_step_val = int32(60)
-
-func update_wheel_xy(last_x, last_y, target_x, target_y int32) (int32, int32) {
+// [移植 V1.2.0] 使用可配置的 step_speed
+func (self *TouchHandler) update_wheel_xy(last_x, last_y, target_x, target_y int32, step_speed float64) (int32, int32) {
 	if last_x == target_x && last_y == target_y {
 		return last_x, last_y
 	} else {
 		x_rest := target_x - last_x
 		y_rest := target_y - last_y
 		total_rest := int32(math.Sqrt(float64(x_rest*x_rest + y_rest*y_rest)))
-		if total_rest <= wheel_step_val {
+
+		// [移植 V1.2.3 修复] 确保 step_speed 至少为 1 (如果 < 1 会导致除零或不移动)
+		var wheel_step_val_int32 int32
+		if step_speed < 1.0 {
+			wheel_step_val_int32 = 1
+		} else {
+			wheel_step_val_int32 = int32(step_speed)
+		}
+
+		if total_rest <= wheel_step_val_int32 {
 			return target_x, target_y
 		} else {
-			return last_x + x_rest*wheel_step_val/total_rest, last_y + y_rest*wheel_step_val/total_rest
+			// [移植 V1.2.3 修复] 确保 total_rest 不为 0
+			if total_rest == 0 {
+				return target_x, target_y
+			}
+			return last_x + x_rest*wheel_step_val_int32/total_rest, last_y + y_rest*wheel_step_val_int32/total_rest
 		}
 	}
 }
 
+// [移植 V1.4.0] P8: 轮盘延迟重置
 func (self *TouchHandler) loop_handel_wasd_wheel() { //循环处理wasd映射轮盘并控制释放
 	for {
 		select {
 		case <-global_close_signal:
 			return
 		default:
-			wasd_wheel_target_x, wasd_wheel_target_y := self.get_wasd_now_target() //获取目标位置
+			wasd_wheel_target_x, wasd_wheel_target_y := self.get_wasd_now_target() // [移植 V1.4.1] P3 (静步模式)
+
 			if self.wheel_init_x == wasd_wheel_target_x && self.wheel_init_y == wasd_wheel_target_y {
-				self.wasd_wheel_released = true //如果wasd目标位置 等于 wasd轮盘初始位置 则认为轮盘释放
-				self.wasd_wheel_last_x = self.wheel_init_x + rand_offset()
-				self.wasd_wheel_last_y = self.wheel_init_y + rand_offset()
+				// --- [移植 V1.4.0] P8: 检查延迟释放 ---
+				if !self.wasd_wheel_released { // 仅在状态为 "按下" 时检查
+					if time.Since(self.wheel_last_input_time) > self.wheel_delay_reset_duration {
+						self.wasd_wheel_released = true
+						self.wasd_wheel_last_x = self.wheel_init_x
+						self.wasd_wheel_last_y = self.wheel_init_y
+						self.star_curve_counter = 0 // [移植 V1.2.3] 重置恒星曲线计数器
+					}
+				}
+				// --- [移植 V1.4.0] P8 结束 ---
 			} else {
+				// [移植 V1.2.3] 恒星正在移动
 				self.wasd_wheel_released = false
 				if self.wasd_wheel_last_x != wasd_wheel_target_x || self.wasd_wheel_last_y != wasd_wheel_target_y {
-					self.wasd_wheel_last_x, self.wasd_wheel_last_y = update_wheel_xy(self.wasd_wheel_last_x, self.wasd_wheel_last_y, wasd_wheel_target_x, wasd_wheel_target_y)
-					self.handel_wheel_action(Wheel_action_move, self.wasd_wheel_last_x+rand_offset(), self.wasd_wheel_last_y+rand_offset())
-					// self.handel_wheel_action(Wheel_action_move, self.wasd_wheel_last_x, self.wasd_wheel_last_y)
+
+					// --- [移植 V1.2.3] 计算恒星动态速度 ---
+					var current_step_speed float64
+					if self.star_dynamic_speed_enable {
+						current_step_speed = self.get_dynamic_speed(
+							self.wheel_step_speed, // Max speed
+							self.star_dynamic_speed_min,
+							self.star_dynamic_speed_freq,
+							&self.star_dynamic_speed_counter,
+						)
+					} else {
+						current_step_speed = self.wheel_step_speed
+					}
+					// --- [移植 V1.2.3] 结束 ---
+
+					// 1. [移植 V1.2.3] 计算“主路径”上的下一个点
+					main_path_x, main_path_y := self.update_wheel_xy(self.wasd_wheel_last_x, self.wasd_wheel_last_y, wasd_wheel_target_x, wasd_wheel_target_y, current_step_speed)
+					self.wasd_wheel_last_x = main_path_x
+					self.wasd_wheel_last_y = main_path_y
+
+					// 2. [移植 V1.2.3] 计算“恒星曲线”的偏移量
+					curve_x, curve_y := self.get_star_curve_offset()
+
+					// 3. [移植 V1.2.3] 施加曲线
+					final_x := main_path_x + curve_x
+					final_y := main_path_y + curve_y
+
+					// 4. [移植 V1.2.3] 更新恒星位置 (未缩放像素)
+					self.handel_wheel_action(1, final_x, final_y) // 1 = Wheel_action_move
 				}
 			}
+
+			// --- [移植 V1.4.0] P8: 检查轮盘是否应释放 ---
 			if self.wheel_id != -1 && self.wasd_wheel_released && self.ls_wheel_released {
-				self.handel_wheel_action(Wheel_action_release, -1, -1) //wheel当前按下 且两个标记都释放 则释放
+				// (检查延迟)
+				if time.Since(self.wheel_last_input_time) > self.wheel_delay_reset_duration {
+					self.wheel_lock.Lock()
+					if self.wheel_id != -1 {
+						self.wheel_id = self.touch_release(self.wheel_id)
+					}
+					// 重置恒星位置到中心
+					self.wheel_star_x = self.wheel_init_x
+					self.wheel_star_y = self.wheel_init_y
+					self.wheel_lock.Unlock()
+				}
 			}
-			time.Sleep(time.Duration(4) * time.Millisecond)
+			// --- [移植 V1.4.0] P8 结束 ---
+
+			time.Sleep(time.Duration(MAIN_LOOP_NS_INT) * time.Nanosecond) // 250HZ
 		}
 	}
 }
@@ -647,6 +1548,140 @@ func (self *TouchHandler) quick_click(keyname string) {
 	self.handel_key_up_down(keyname, UP, "MOUSE_WHEEL")
 }
 
+// --- [移植 V1.4.0] P2, P7: 滚轮滑块核心逻辑 ---
+// --- [修改 V2.0.0] 坐标系转换 ---
+func (self *TouchHandler) handel_scroll_slider(direction int32) {
+	// (direction: -1 为上, 1 为下)
+
+	// 1. 检查功能是否启用
+	if !self.scroll_slider_enable {
+		// 回退到原版 quick_click 逻辑
+		if direction < 0 {
+			go self.quick_click("REL_WHEEL_UP") //纵向滚轮向上
+		} else if direction > 0 {
+			go self.quick_click("REL_WHEEL_DOWN") //纵向滚轮向下
+		}
+		return
+	}
+
+	self.scroll_slider_lock.Lock()
+	defer self.scroll_slider_lock.Unlock()
+
+	// 2. 更新滚动时间 (用于自动释放)
+	self.scroll_slider_last_scroll_time = time.Now()
+
+	// 3. 检查是否超时 (用于重置位置)
+	if time.Since(self.scroll_slider_last_reset_time) > self.scroll_slider_timeout_duration {
+		self.scroll_slider_current_y = self.scroll_slider_init_y
+	}
+	// 4. 更新重置计时器
+	self.scroll_slider_last_reset_time = time.Now()
+
+	// 5. 准备坐标 (未缩放)
+	final_x, final_y := self.scroll_slider_init_x, self.scroll_slider_current_y
+
+	is_new_press := (self.scroll_slider_id == -1) // [移植 V1.4.1] P1: (-1)
+
+	// 6. 如果是新按下, 应用随机落点
+	if is_new_press && self.scroll_slider_random_enable {
+		offset_x, offset_y := self.get_random_offset(self.scroll_slider_random_radius_px)
+		final_x += offset_x
+		final_y += offset_y
+	}
+
+	// --- [移植 V1.4.0] P7: 计算动态速度 ---
+	var current_speed_px int32
+	if self.scroll_slider_dynamic_speed_enable {
+		current_speed_px = int32(self.get_dynamic_speed(
+			float64(self.scroll_slider_speed_px), // Max speed
+			float64(self.scroll_slider_speed_px)*self.scroll_slider_dynamic_speed_min, // Min speed (比例)
+			self.scroll_slider_dynamic_speed_freq,
+			&self.scroll_slider_dynamic_speed_counter,
+		))
+	} else {
+		current_speed_px = self.scroll_slider_speed_px
+	}
+	// --- [移植 V1.4.0] P7 结束 ---
+
+	// 7. 计算目标 Y 坐标 (未缩放)
+	target_y := final_y + (direction * current_speed_px) // [移植 V1.4.0] P7
+
+	// 8. 检查边界, 如果撞到边界则重置到中心 (未缩放)
+	boundary_hit := false
+	if target_y < self.scroll_slider_bound_up {
+		target_y = self.scroll_slider_init_y
+		boundary_hit = true
+	} else if target_y > self.scroll_slider_bound_down {
+		target_y = self.scroll_slider_init_y
+		boundary_hit = true
+	}
+
+	// 9. 更新状态 (未缩放)
+	self.scroll_slider_current_y = target_y
+	final_y = target_y
+
+	// 10. 应用曲线 (未缩放)
+	if self.scroll_slider_curve_enable {
+		// [移植 V1.4.0] P7: 使用曲线频率
+		curve_calc_angle := (float64(final_y-self.scroll_slider_init_y) * 0.1) * self.scroll_slider_curve_freq
+		curve_offset := math.Sin(curve_calc_angle) * float64(self.scroll_slider_curve_amount_px)
+		final_x += int32(curve_offset)
+	}
+
+	// 11. 应用触摸 (P2, P7: 延迟逻辑)
+	if is_new_press || boundary_hit {
+		// --- [移植 V1.4.0] P2: "瞬移" BUG 修复 ---
+		if boundary_hit && self.scroll_slider_id >= 0 { // [移植 V1.4.1] P1: (>=0)
+			// 1. 先释放
+			self.scroll_slider_id = self.touch_release(self.scroll_slider_id)
+		}
+		// --- [移植 V1.4.0] P2 结束 ---
+
+		// --- [移植 V1.4.0] P7: 延迟按下 ---
+		self.scroll_slider_id = -2 // 标记为 "即将按下"
+		go (func(x, y int32, is_boundary_hit bool) {
+			// 1. 计算延迟
+			var delay time.Duration
+			if is_boundary_hit { // 边界重置延迟
+				delay = self.get_delay_ms(
+					self.scroll_slider_delay_reset_ms,
+					self.scroll_slider_delay_reset_min_ms,
+					self.scroll_slider_delay_random_enable,
+				)
+			} else { // 首次按下延迟 (使用0)
+				delay = 0
+			}
+
+			if delay > 0 {
+				time.Sleep(delay)
+			}
+
+			self.scroll_slider_lock.Lock()
+			defer self.scroll_slider_lock.Unlock()
+
+			// 2. 检查状态
+			if self.scroll_slider_id != -2 {
+				return // 状态已改变 (可能被下次滚动覆盖)
+			}
+
+			// 3. 按下触点
+			// (x, y 是未缩放像素, 设为 true)
+			self.scroll_slider_id = self.touch_require(x, y, true)
+		})(final_x, final_y, boundary_hit)
+		// --- [移植 V1.4.0] P7 结束 ---
+
+	} else {
+		// 正常移动
+		if self.scroll_slider_id >= 0 { // [移植 V1.4.1] P1
+			// (final_x, final_y 是未缩放像素, 设为 true)
+			self.touch_move(self.scroll_slider_id, final_x, final_y, true)
+		}
+	}
+}
+
+// --- [移植 V1.4.0] 结束 ---
+
+// --- [修改 V2.0.0] 移植 v1.4.1 P5 (滚轮键增强) + v4.0.1 (HWheel) ---
 func (self *TouchHandler) handel_rel_event(x int32, y int32, HWhell int32, Wheel int32) {
 	if x != 0 || y != 0 {
 		if self.map_on {
@@ -658,6 +1693,7 @@ func (self *TouchHandler) handel_rel_event(x int32, y int32, HWhell int32, Wheel
 
 	if HWhell != 0 {
 		if self.map_on {
+			// (v4.0.1 中没有 HWheel 映射, 移植 v1.4.0 的 quick_click)
 			if HWhell > 0 {
 				go self.quick_click("REL_HWHEEL_UP")
 			} else if HWhell < 0 {
@@ -669,42 +1705,91 @@ func (self *TouchHandler) handel_rel_event(x int32, y int32, HWhell int32, Wheel
 	}
 	if Wheel != 0 {
 		if self.map_on {
-			if Wheel > 0 {
-				go self.quick_click("REL_WHEEL_UP") //纵向滚轮向上
-			} else if Wheel < 0 {
-				go self.quick_click("REL_WHEEL_DOWN") //纵向滚轮向下
+			var key_name string
+			if Wheel < 0 {
+				// (v4.0.1 中 Wheel < 0 是 REL_WHEEL_DOWN)
+				key_name = "REL_WHEEL_DOWN"
+			} else {
+				// (v4.0.1 中 Wheel > 0 是 REL_WHEEL_UP)
+				key_name = "REL_WHEEL_UP"
 			}
+
+			// P5: 检查是否有特殊配置
+			if action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name); ok {
+				action_type := action.Get("TYPE").MustString()
+
+				// P5: 这些类型是 "单次" 触发的
+				if action_type == "MULT_PRESS" || action_type == "SEQUENTIAL_PRESS" {
+					// (state is nil, 总是从0开始)
+					state, _ := self.key_action_state_save.Load(key_name)
+					// (只在 DOWN 时触发)
+					self.execute_key_action(time.Now(), key_name, DOWN, action, state)
+				} else {
+					// 默认 (CLICK, DRAG, etc.) 使用滚轮滑块 (v1.4.0) 或 quick_click (v4.0.1)
+					// (我们保留 v1.4.0 的滚轮滑块)
+					go self.handel_scroll_slider(Wheel * -1)
+				}
+			} else {
+				// 默认 (未配置) 使用滚轮滑块
+				go self.handel_scroll_slider(Wheel * -1)
+			}
+
 		} else {
 			self.u_input_control(UInput_mouse_wheel, REL_WHEEL, Wheel)
 		}
 	}
 }
 
+// --- [修改 V2.0.0] 移植 v1.4.1 的所有按键类型, 适配 0x7ffffffe 坐标系 ---
 func (self *TouchHandler) execute_key_action(start time.Time, key_name string, up_down int32, action *simplejson.Json, state interface{}) {
 	action_type := action.Get("TYPE").MustString()
-	if key_name == "REL_WHEEL_DOWN" || key_name == "REL_WHEEL_UP" || key_name == "REL_HWHEEL_DOWN" || key_name == "REL_HWHEEL_UP" {
-		if action_type == "PRESS" || action_type == "AUTO_FIRE" || action_type == "MULT_PRESS" {
+	// --- [移植 V1.4.1] P5: 滚轮键增强 ---
+	isWheelKey := key_name == "REL_WHEEL_DOWN" || key_name == "REL_WHEEL_UP" || key_name == "REL_HWHEEL_DOWN" || key_name == "REL_HWHEEL_UP"
+	if isWheelKey {
+		if action_type == "PRESS" || action_type == "AUTO_FIRE" {
 			logger.Errorf("鼠标滚轮无法使用动作类型:%v", action_type) //二次保证
 		}
 	}
+	// --- [移植 V1.4.1] P5 结束 ---
+
 	defer logger.Debugf("key[%s]%s\t%v\t%v", key_name, UDF[up_down], action, time.Since(start))
 	switch action_type {
 	case "PRESS": //按键的按下与释放直接映射为触屏的按下与释放
 		if up_down == DOWN {
-			x := int32(action.Get("POS").GetIndex(0).MustFloat64()*float64(self.rel_screen_x)) + rand_offset()
-			y := int32(action.Get("POS").GetIndex(1).MustFloat64()*float64(self.rel_screen_y)) + rand_offset()
-			self.key_action_state_save.Store(key_name, self.touch_require(x, y, true))
+			x := int32(action.Get("POS").GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+			y := int32(action.Get("POS").GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+			// --- [移植 V1.1.1] 应用按键抖动 ---
+			x_jit, y_jit := self.apply_key_jitter(x, y) // (未缩放)
+			// (设为 true, 转换为 0x7ffffffe)
+			self.key_action_state_save.Store(key_name, self.touch_require(x_jit, y_jit, true))
+			// --- [移植 V1.1.1] 结束 ---
 		} else if up_down == UP {
-			tid := state.(int32)
-			self.touch_release(tid)
+			// --- [移植 V1.3.4] 修复: P0 崩溃 ---
+			if tid, ok := state.(int32); ok {
+				self.touch_release(tid)
+			} else {
+				logger.Warnf("key[%s] (PRESS) 状态类型错误, 期望 int32, 得到 %T", key_name, state)
+			}
 			self.key_action_state_save.Delete(key_name)
+			// --- [移植 V1.3.4] 修复结束 ---
 		}
 	case "CLICK": //仅在按下的时候执行一次 不保存状态所以不响应down 也不会有down到这里
 		if up_down == DOWN {
 			go (func() {
-				x := int32(action.Get("POS").GetIndex(0).MustFloat64()*float64(self.rel_screen_x)) + rand_offset()
-				y := int32(action.Get("POS").GetIndex(1).MustFloat64()*float64(self.rel_screen_y)) + rand_offset()
-				tid := self.touch_require(x, y, true)
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action.Get("TYPE").MustString() != "CLICK" {
+					return // 配置已改变, 中止
+				}
+				// --- [移植 V1.4.0] P4 结束 ---
+
+				x := int32(action.Get("POS").GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+				y := int32(action.Get("POS").GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+				// --- [移植 V1.1.1] 应用按键抖动 ---
+				x_jit, y_jit := self.apply_key_jitter(x, y) // (未缩放)
+				// (设为 true, 转换为 0x7ffffffe)
+				tid := self.touch_require(x_jit, y_jit, true)
+				// --- [移植 V1.1.1] 结束 ---
 				time.Sleep(time.Duration(8) * time.Millisecond) //8ms 120HZ下一次
 				self.touch_release(tid)
 			})()
@@ -712,17 +1797,54 @@ func (self *TouchHandler) execute_key_action(start time.Time, key_name string, u
 
 	case "AUTO_FIRE": //连发 按下开始 松开结束 按照设置的间隔 持续点击
 		if up_down == DOWN {
-			x := int32(action.Get("POS").GetIndex(0).MustFloat64() * float64(self.rel_screen_x))
-			y := int32(action.Get("POS").GetIndex(1).MustFloat64() * float64(self.rel_screen_y))
-			down_time := action.Get("INTERVAL").GetIndex(0).MustInt()
-			interval_time := action.Get("INTERVAL").GetIndex(1).MustInt()
+			x := int32(action.Get("POS").GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+			y := int32(action.Get("POS").GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+
+			// --- [移植 V1.4.1] P6: 随机连点 ---
+			interval_array := action.Get("INTERVAL").MustArray()
+			max_dur := 18
+			max_int := 20
+			min_dur := 10
+			min_int := 10
+
+			if len(interval_array) >= 2 {
+				max_dur = action.Get("INTERVAL").GetIndex(0).MustInt(18)
+				max_int = action.Get("INTERVAL").GetIndex(1).MustInt(20)
+			}
+			if len(interval_array) >= 4 {
+				min_dur = action.Get("INTERVAL").GetIndex(2).MustInt(max_dur / 2)
+				min_int = action.Get("INTERVAL").GetIndex(3).MustInt(max_int / 2)
+			} else {
+				// 兼容 V1.4.0 (2个值)
+				min_dur = max_dur / 2
+				min_int = max_int / 2
+			}
+			// --- [移植 V1.4.1] P6 结束 ---
+
 			self.key_action_state_save.Store(key_name, true)
 			go (func() {
 				for {
-					tid := self.touch_require(x+rand_offset(), y+rand_offset(), true)
-					time.Sleep(time.Duration(down_time) * time.Millisecond)
+					// --- [移植 V1.4.0] P4: 状态校验 ---
+					// (在循环内部校验)
+					action_check, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+					if !ok || action_check.Get("TYPE").MustString() != "AUTO_FIRE" {
+						break // 配置已改变, 中止
+					}
+					// --- [移植 V1.4.0] P4 结束 ---
+
+					// --- [移植 V1.4.1] P6: 随机连点 ---
+					down_time := self.get_random_duration(max_dur, min_dur)
+					interval_time := self.get_random_duration(max_int, min_int)
+					// --- [移植 V1.4.1] P6 结束 ---
+
+					// --- [移植 V1.1.1] 应用按键抖动 ---
+					x_jit, y_jit := self.apply_key_jitter(x, y) // (未缩放)
+					// (设为 true, 转换为 0x7ffffffe)
+					tid := self.touch_require(x_jit, y_jit, true)
+					// --- [移植 V1.1.1] 结束 ---
+					time.Sleep(down_time) // [移植 V1.4.1] P6
 					self.touch_release(tid)
-					time.Sleep(time.Duration(interval_time) * time.Millisecond)
+					time.Sleep(interval_time) // [移植 V1.4.1] P6
 					if running, ok := self.key_action_state_save.Load(key_name); !ok || running == false {
 						break
 					}
@@ -740,10 +1862,21 @@ func (self *TouchHandler) execute_key_action(start time.Time, key_name string, u
 			release_signal := make(chan bool, 16)
 			self.key_action_state_save.Store(key_name, release_signal)
 			go (func() {
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action.Get("TYPE").MustString() != "MULT_PRESS" {
+					return // 配置已改变, 中止
+				}
+				// --- [移植 V1.4.0] P4 结束 ---
+
 				for i := range action.Get("POS_S").MustArray() {
-					x := int32(action.Get("POS_S").GetIndex(i).GetIndex(0).MustFloat64()*float64(self.rel_screen_x)) + rand_offset()
-					y := int32(action.Get("POS_S").GetIndex(i).GetIndex(1).MustFloat64()*float64(self.rel_screen_y)) + rand_offset()
-					tid := self.touch_require(x, y, true)
+					x := int32(action.Get("POS_S").GetIndex(i).GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+					y := int32(action.Get("POS_S").GetIndex(i).GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+					// --- [移植 V1.1.1] 应用按键抖动 ---
+					x_jit, y_jit := self.apply_key_jitter(x, y) // (未缩放)
+					// (设为 true, 转换为 0x7ffffffe)
+					tid := self.touch_require(x_jit, y_jit, true)
+					// --- [移植 V1.1.1] 结束 ---
 					tid_save = append(tid_save, tid)
 					time.Sleep(time.Duration(8) * time.Millisecond) // 间隔8ms 是否需要延迟有待验证
 				}
@@ -755,49 +1888,383 @@ func (self *TouchHandler) execute_key_action(start time.Time, key_name string, u
 				}
 			})()
 		} else if up_down == UP {
-			state.(chan bool) <- true
-			//按下立即创建channel 并保存状态
-			//松开拿到的channel 并发送信号
-			//同时立即删除状态
-			//即按下立即执行并等待释放,此过程中不响应按下但是可以响应多次松开 //缓冲区大小
-			//而再松开后释放触摸过程中便可以再次响应按下
+			// --- [移植 V1.3.4] 修复: P0 崩溃 ---
+			if release_signal, ok := state.(chan bool); ok {
+				release_signal <- true
+			} else {
+				logger.Warnf("key[%s] (MULT_PRESS) 状态类型错误, 期望 chan bool, 得到 %T", key_name, state)
+			}
+			// --- [移植 V1.3.4] 修复结束 ---
 		}
 	case "DRAG": //只响应一次按下  可同时多次触发
 		if up_down == DOWN {
 			go (func() {
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action.Get("TYPE").MustString() != "DRAG" {
+					return // 配置已改变, 中止
+				}
+				// --- [移植 V1.4.0] P4 结束 ---
+
 				pos_len := len(action.Get("POS_S").MustArray())
+				// [移植 V1.4.0] P4: 修复 index out of range (如果 POS_S 为空)
+				if pos_len == 0 {
+					return
+				}
+				// [移植 V1.4.0] P4 结束
+
 				interval_time := action.Get("INTERVAL").GetIndex(0).MustInt()
-				init_x := int32(action.Get("POS_S").GetIndex(0).GetIndex(0).MustFloat64() * float64(self.rel_screen_x))
-				init_y := int32(action.Get("POS_S").GetIndex(0).GetIndex(1).MustFloat64() * float64(self.rel_screen_y))
-				tid := self.touch_require(init_x, init_y, true)
+				init_x := int32(action.Get("POS_S").GetIndex(0).GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+				init_y := int32(action.Get("POS_S").GetIndex(0).GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+
+				// --- [移植 V1.1.1] 应用按键抖动 ---
+				init_x_jit, init_y_jit := self.apply_key_jitter(init_x, init_y) // (未缩放)
+				// (设为 true, 转换为 0x7ffffffe)
+				tid := self.touch_require(init_x_jit, init_y_jit, true)
+				// --- [移植 V1.1.1] 结束 ---
+
 				time.Sleep(time.Duration(interval_time) * time.Millisecond)
 				for index := 1; index < pos_len-1; index++ {
-					x := int32(action.Get("POS_S").GetIndex(index).GetIndex(0).MustFloat64()*float64(self.rel_screen_x)) + rand_offset()
-					y := int32(action.Get("POS_S").GetIndex(index).GetIndex(1).MustFloat64()*float64(self.rel_screen_y)) + rand_offset()
-					self.touch_move(tid, x, y, true)
+					x := int32(action.Get("POS_S").GetIndex(index).GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+					y := int32(action.Get("POS_S").GetIndex(index).GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+					// --- [移植 V1.1.1] 应用按键抖动 ---
+					x_jit, y_jit := self.apply_key_jitter(x, y) // (未缩放)
+					// (设为 true, 转换为 0x7ffffffe)
+					self.touch_move(tid, x_jit, y_jit, true)
+					// --- [移植 V1.1.1] 结束 ---
 					time.Sleep(time.Duration(interval_time) * time.Millisecond)
 				}
-				end_x := int32(action.Get("POS_S").GetIndex(pos_len-1).GetIndex(0).MustFloat64() * float64(self.rel_screen_x))
-				end_y := int32(action.Get("POS_S").GetIndex(pos_len-1).GetIndex(1).MustFloat64() * float64(self.rel_screen_y))
-				self.touch_move(tid, end_x, end_y, true)
+
+				// [移植 V1.4.0] P4: 修复 index out of range (如果 POS_S 只有一个点)
+				if pos_len > 1 {
+					end_x := int32(action.Get("POS_S").GetIndex(pos_len-1).GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+					end_y := int32(action.Get("POS_S").GetIndex(pos_len-1).GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+					// --- [移植 V1.1.1] 应用按键抖动 ---
+					end_x_jit, end_y_jit := self.apply_key_jitter(end_x, end_y) // (未缩放)
+					// (设为 true, 转换为 0x7ffffffe)
+					self.touch_move(tid, end_x_jit, end_y_jit, true)
+					// --- [移植 V1.1.1] 结束 ---
+				}
+				// [移植 V1.4.0] P4 结束
+
 				self.touch_release(tid)
 			})()
 		} else if up_down == UP {
 
 		}
 
+	// --- [移植 V1.3.0] 新按键类型 ---
+	case "SYNC_VIEW_RESET": // 同步按抬鼠标重置 (小眼睛)
+		// --- [移植 V1.3.4] 修复: P2 视角BUG, 弃用全局 view_is_saved ---
+		if up_down == DOWN {
+			// 1. 保存当前视角位置 (作为状态) (0x7ffffffe)
+			saved_pos := [2]int32{self.view_current_x, self.view_current_y}
+			self.key_action_state_save.Store(key_name, saved_pos)
+
+			// 2. 计算新位置 (0x7ffffffe)
+			new_x := int32(action.Get("POS").GetIndex(0).MustFloat64() * 0x7ffffffe)
+			new_y := int32(action.Get("POS").GetIndex(1).MustFloat64() * 0x7ffffffe)
+
+			// --- [移植 V1.4.0] P6: 延迟重置 ---
+			self.view_lock.Lock()
+			if self.view_id >= 0 {
+				self.view_id = self.touch_release(self.view_id)
+			}
+			self.view_id = -1                                // 标记为释放
+			self.reset_view_position(new_x, new_y)         // 设置逻辑坐标 (0x7ffffffe)
+			self.delayed_view_require()                      // 启动延迟按下
+			self.view_lock.Unlock()
+			// --- [移植 V1.4.0] P6 结束 ---
+
+		} else if up_down == UP {
+			// 1. 恢复到保存的位置
+			if saved_state, ok := state.([2]int32); ok {
+				// --- [移植 V1.4.0] P6: 延迟重置 ---
+				self.view_lock.Lock()
+				if self.view_id >= 0 {
+					self.view_id = self.touch_release(self.view_id)
+				}
+				self.view_id = -1 // 标记为释放
+				self.reset_view_position(saved_state[0], saved_state[1]) // 设置逻辑坐标 (0x7ffffffe)
+				self.delayed_view_require() // 启动延迟按下
+				self.view_lock.Unlock()
+				// --- [移植 V1.4.0] P6 结束 ---
+			} else {
+				// 状态丢失或类型错误, 恢复到 init
+				self.view_lock.Lock()
+				if self.view_id >= 0 {
+					self.view_id = self.touch_release(self.view_id)
+				}
+				self.view_id = -1 // 标记为释放
+				self.reset_view_position(self.view_init_x, self.view_init_y) // 设置逻辑坐标 (0x7ffffffe)
+				self.delayed_view_require() // 启动延迟按下
+				self.view_lock.Unlock()
+				logger.Warnf("key[%s] (SYNC_VIEW_RESET) 状态类型错误, 期望 [2]int32, 得到 %T", key_name, state)
+			}
+			self.key_action_state_save.Delete(key_name)
+		}
+		// --- [移植 V1.3.4] 修复结束 ---
+
+	case "CLICK_VIEW_RESET": // 单点击鼠标重置 (药品)
+		// --- [移植 V1.3.4] 修复: P2 视角BUG, 弃用全局 view_is_saved ---
+		if up_down == DOWN {
+			if state == nil { // 第一次按下
+				// 1. 保存当前位置 (作为状态) (0x7ffffffe)
+				saved_pos := [2]int32{self.view_current_x, self.view_current_y}
+				self.key_action_state_save.Store(key_name, saved_pos)
+
+				// 2. 计算新位置 (0x7ffffffe)
+				new_x := int32(action.Get("POS").GetIndex(0).MustFloat64() * 0x7ffffffe)
+				new_y := int32(action.Get("POS").GetIndex(1).MustFloat64() * 0x7ffffffe)
+
+				// 3. 重置到新位置
+				// --- [移植 V1.4.0] P6: 延迟重置 ---
+				self.view_lock.Lock()
+				if self.view_id >= 0 {
+					self.view_id = self.touch_release(self.view_id)
+				}
+				self.view_id = -1 // 标记为释放
+				self.reset_view_position(new_x, new_y) // 设置逻辑坐标 (0x7ffffffe)
+				self.delayed_view_require() // 启动延迟按下
+				self.view_lock.Unlock()
+				// --- [移植 V1.4.0] P6 结束 ---
+			} else { // 第二次按下
+				// 1. 恢复位置
+				if saved_state, ok := state.([2]int32); ok {
+					// --- [移植 V1.4.0] P6: 延迟重置 ---
+					self.view_lock.Lock()
+					if self.view_id >= 0 {
+						self.view_id = self.touch_release(self.view_id)
+					}
+					self.view_id = -1 // 标记为释放
+					self.reset_view_position(saved_state[0], saved_state[1]) // 设置逻辑坐标 (0x7ffffffe)
+					self.delayed_view_require() // 启动延迟按下
+					self.view_lock.Unlock()
+					// --- [移植 V1.4.0] P6 结束 ---
+				} else {
+					// 状态丢失或类型错误, 恢复到 init
+					self.view_lock.Lock()
+					if self.view_id >= 0 {
+						self.view_id = self.touch_release(self.view_id)
+					}
+					self.view_id = -1 // 标记为释放
+					self.reset_view_position(self.view_init_x, self.view_init_y) // 设置逻辑坐标 (0x7ffffffe)
+					self.delayed_view_require() // 启动延迟按下
+					self.view_lock.Unlock()
+					logger.Warnf("key[%s] (CLICK_VIEW_RESET) 状态类型错误, 期望 [2]int32, 得到 %T", key_name, state)
+				}
+
+				// 2. 删除状态
+				self.key_action_state_save.Delete(key_name)
+			}
+		}
+		// --- [移植 V1.3.4] 修复结束 ---
+
+	case "BACKPACK_TOGGLE": // 背包键
+		if up_down == DOWN {
+			// --- [移植 V1.4.0] 修复: P3 智能背包键 ---
+			var pos_to_click *simplejson.Json
+
+			// 1. 直接读取真实状态
+			if self.map_on {
+				// 映射已开 -> 即将关闭, 点击 A 点 (POS)
+				pos_to_click = action.Get("POS")
+			} else {
+				// 映射已关 -> 即将开启, 点击 B 点 (POS_B)
+				pos_to_click = action.Get("POS_B")
+			}
+
+			// 2. 立即切换映射
+			self.switch_map_mode()
+
+			// 3. 执行点击 (在 goroutine 中)
+			go (func() {
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action_check, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action_check.Get("TYPE").MustString() != "BACKPACK_TOGGLE" {
+					return // 配置已改变, 中止
+				}
+				// (V1.4.1 P3: 切换状态后, pos_to_click 仍然是正确的, 无需重新获取)
+				// --- [移植 V1.4.0] P4 结束 ---
+
+				x := int32(pos_to_click.GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+				y := int32(pos_to_click.GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+				x_jit, y_jit := self.apply_key_jitter(x, y)                                    // (未缩放)
+				// (设为 true, 转换为 0x7ffffffe)
+				tid := self.touch_require(x_jit, y_jit, true)
+				time.Sleep(time.Duration(8) * time.Millisecond)
+				self.touch_release(tid)
+			})()
+			// --- [移植 V1.4.0] 修复结束 ---
+		}
+
+	case "CLICK_MAP_ON": // 开启映射后点击（一次）
+		if up_down == DOWN {
+			// --- [移植 V1.3.4] 修复: P3 逻辑顺序 (先开图, 后点击) ---
+			// 1. 立即开启映射 (如果未开)
+			if !self.map_on {
+				self.switch_map_mode()
+			}
+			// 2. 执行点击 (复制 CLICK 逻辑)
+			// --- [移植 V1.3.4] 修复结束 ---
+			go (func() {
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action.Get("TYPE").MustString() != "CLICK_MAP_ON" {
+					return // 配置已改变, 中止
+				}
+				// --- [移植 V1.4.0] P4 结束 ---
+
+				x := int32(action.Get("POS").GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+				y := int32(action.Get("POS").GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+				x_jit, y_jit := self.apply_key_jitter(x, y)                                         // (未缩放)
+				// (设为 true, 转换为 0x7ffffffe)
+				tid := self.touch_require(x_jit, y_jit, true)
+				time.Sleep(time.Duration(8) * time.Millisecond)
+				self.touch_release(tid)
+			})()
+		}
+
+	case "CLICK_MAP_OFF": // 点击关闭映射
+		if up_down == DOWN {
+			// 1. 立即关闭映射 (如果已开)
+			if self.map_on {
+				self.switch_map_mode()
+			}
+			// 2. 执行点击 (复制 CLICK 逻辑)
+			go (func() {
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action.Get("TYPE").MustString() != "CLICK_MAP_OFF" {
+					return // 配置已改变, 中止
+				}
+				// --- [移植 V1.4.0] P4 结束 ---
+
+				x := int32(action.Get("POS").GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+				y := int32(action.Get("POS").GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+				x_jit, y_jit := self.apply_key_jitter(x, y)                                         // (未缩放)
+				// (设为 true, 转换为 0x7ffffffe)
+				tid := self.touch_require(x_jit, y_jit, true)
+				time.Sleep(time.Duration(8) * time.Millisecond)
+				self.touch_release(tid)
+			})()
+		}
+
+	case "SEQUENTIAL_PRESS": // 依次触摸点
+		if up_down == DOWN {
+			// 1. 获取当前索引
+			current_index := 0
+			if state != nil {
+				// --- [移植 V1.3.4] 修复: P0 崩溃 (虽然这里是 int, 但保持一致性) ---
+				if v, ok := state.(int); ok {
+					current_index = v
+				}
+				// --- [移植 V1.3.4] 修复结束 ---
+			}
+
+			// 2. 构建完整的位置列表 (POS + POS_S)
+			all_pos := []*simplejson.Json{action.Get("POS")}
+			pos_s_list, ok := action.CheckGet("POS_S")
+			if ok {
+				pos_s_array := pos_s_list.MustArray()
+				for i := range pos_s_array {
+					all_pos = append(all_pos, action.Get("POS_S").GetIndex(i))
+				}
+			}
+
+			total_len := len(all_pos)
+
+			// [移植 V1.4.0] P4: 修复 index out of range (如果列表为空)
+			if total_len == 0 {
+				return
+			}
+			// [移植 V1.4.0] P4 结束
+
+			// 3. 获取要点击的位置
+			pos_to_click := all_pos[current_index]
+
+			// 4. 计算并保存下一个索引
+			next_index := (current_index + 1) % total_len
+			self.key_action_state_save.Store(key_name, next_index)
+
+			// 5. 执行点击
+			go (func() {
+				// --- [移植 V1.4.0] P4: 状态校验 ---
+				action_check, ok := self.config.Get("KEY_MAPS").CheckGet(key_name)
+				if !ok || action_check.Get("TYPE").MustString() != "SEQUENTIAL_PRESS" {
+					return // 配置已改变, 中止
+				}
+				// --- [移植 V1.4.0] P4 结束 ---
+
+				x := int32(pos_to_click.GetIndex(0).MustFloat64() * float64(self.rel_screen_x)) // (未缩放)
+				y := int32(pos_to_click.GetIndex(1).MustFloat64() * float64(self.rel_screen_y)) // (未缩放)
+				x_jit, y_jit := self.apply_key_jitter(x, y)                                    // (未缩放)
+				// (设为 true, 转换为 0x7ffffffe)
+				tid := self.touch_require(x_jit, y_jit, true)
+				time.Sleep(time.Duration(8) * time.Millisecond)
+				self.touch_release(tid)
+			})()
+		}
+		// --- [移植 V1.3.0] 结束 ---
+
 	}
 }
 
+// --- [修改 V2.0.0] 移植 v1.4.1 的粘滞修复逻辑 ---
 func (self *TouchHandler) switch_map_mode() {
 	self.total_move_x = 0
-	self.total_move_y = 0                           //总移动距离清零
-	self.view_id = self.touch_release(self.view_id) //视角id释放
-	self.key_action_state_save.Range(func(key, value interface{}) bool {
-		self.execute_key_action(time.Now(), key.(string), UP, self.config.Get("KEY_MAPS").Get(key.(string)), value)
-		logger.Infof("已释放key:%s", key.(string))
+	self.total_move_y = 0 //总移动距离清零
+
+	// --- [移植 V1.4.0] P6: 切换映射时, 释放视角触点 ---
+	self.view_lock.Lock()
+	if self.view_id >= 0 { // (>=0 意味着是真实触点)
+		self.view_id = self.touch_release(self.view_id)
+	}
+	self.view_id = -1 // (标记为 -1, 允许下次延迟触发)
+	self.view_lock.Unlock()
+	// --- [移植 V1.4.0] P6 结束 ---
+
+	// --- [移植 V1.3.5] P7: 修复 "物理" 粘滞按键 ---
+	self.real_key_down_state.Range(func(key, value interface{}) bool {
+		if code, ok := friendly_name_2_keycode[key.(string)]; ok {
+			// 强制发送一个 UP (抬起) 事件到 uinput
+			self.u_input_control(UInput_key_event, int32(code), UP)
+			logger.Debugf("key[%s] 已强制释放 (uinput)", key.(string))
+		}
+		self.real_key_down_state.Delete(key) // 清理状态
 		return true
 	})
+	// --- [移植 V1.3.5] P7 结束 ---
+
+	// --- [移植 V1.4.0] P1: 修复 "虚拟" 粘滞轮盘 ---
+	// (必须在 key_action_state_save.Range 之前, 因为 Range 会释放 AUTO_FIRE)
+	for i := range self.wasd_up_down_statues {
+		self.wasd_up_down_statues[i] = false // 强制抬起所有 WASD 状态
+	}
+	// 立即检查并释放轮盘 (如果它还卡着)
+	if self.wheel_id != -1 {
+		self.wheel_lock.Lock()
+		if self.wheel_id != -1 {
+			self.wheel_id = self.touch_release(self.wheel_id)
+		}
+		self.wheel_star_x = self.wheel_init_x // 重置逻辑位置
+		self.wheel_star_y = self.wheel_init_y
+		self.wheel_lock.Unlock()
+	}
+	self.wasd_wheel_released = true
+	self.ls_wheel_released = true
+	// --- [移植 V1.4.0] P1 结束 ---
+
+	self.key_action_state_save.Range(func(key, value interface{}) bool {
+		// --- [移植 V1.3.4] 修复: P0 崩溃 (在释放时也检查) ---
+		if action, ok := self.config.Get("KEY_MAPS").CheckGet(key.(string)); ok {
+			self.execute_key_action(time.Now(), key.(string), UP, action, value)
+			logger.Infof("已释放key:%s", key.(string))
+		}
+		// --- [移植 V1.3.4] 修复结束 ---
+		return true
+	})
+
 	self.map_on = !self.map_on            //切换
 	self.map_switch_signal <- self.map_on //发送信号到v_mouse切换显示
 	if self.map_on {
@@ -807,6 +2274,7 @@ func (self *TouchHandler) switch_map_mode() {
 	}
 }
 
+// --- [修改 V2.0.0] 移植 v1.4.1 的按键处理逻辑 (背包键, 粘滞修复等) ---
 func (self *TouchHandler) handel_key_up_down(key_name string, up_down int32, dev_name string) {
 	if key_name == "" {
 		return
@@ -830,6 +2298,24 @@ func (self *TouchHandler) handel_key_up_down(key_name string, up_down int32, dev
 		return
 	}
 
+	// --- [移植 V1.3.4] 修复: P1 拦截问题, 允许特定按键在映射关闭时触发 ---
+	if !self.map_on {
+		if action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name); ok {
+			action_type := action.Get("TYPE").MustString()
+			// 只在映射关闭时检查 CLICK_MAP_ON 和 BACKPACK_TOGGLE
+			// [移植 V1.4.0] P3: BACKPACK_TOGGLE 逻辑已更新
+			if action_type == "CLICK_MAP_ON" || action_type == "BACKPACK_TOGGLE" {
+				if up_down == DOWN { // 只在按下时触发
+					state, _ := self.key_action_state_save.Load(key_name)
+					self.execute_key_action(time.Now(), key_name, up_down, action, state)
+				}
+				return // 拦截, 不再继续 (防止进入下面的 u_input_control)
+			}
+		}
+		// (如果不是那两个键, 且映射关闭, 则继续执行下面的 u_input 逻辑)
+	}
+	// --- [移植 V1.3.4] 修复结束 ---
+
 	if self.map_on {
 		for i := 0; i < 4; i++ {
 			if self.wheel_wasd[i] == key_name {
@@ -838,21 +2324,28 @@ func (self *TouchHandler) handel_key_up_down(key_name string, up_down int32, dev
 				} else if up_down == UP {
 					self.wasd_up_down_statues[i] = false
 				}
+				// --- [移植 V1.4.0] P8: 更新轮盘输入时间 ---
+				self.wheel_last_input_time = time.Now()
+				// --- [移植 V1.4.0] P8 结束 ---
 				return
 			}
 		}
 		if self.wheel_shift_enable && key_name == "KEY_LEFTSHIFT" {
-			if self.wheel_shift_switch_enable { //切换模式
-				if up_down == DOWN {
-					self.wasd_up_down_statues[4] = !self.wasd_up_down_statues[4]
+			// --- [移植 V1.2.0] 新 Shift 逻辑 ---
+			if up_down == DOWN {
+				if self.shift_press_toggle {
+					self.wasd_up_down_statues[4] = !self.wasd_up_down_statues[4] // 切换
+				} else {
+					self.wasd_up_down_statues[4] = true // 长按
 				}
-			} else { //长按模式
-				if up_down == DOWN {
-					self.wasd_up_down_statues[4] = true
-				} else if up_down == UP {
-					self.wasd_up_down_statues[4] = false
+			} else if up_down == UP {
+				if self.shift_release_toggle {
+					self.wasd_up_down_statues[4] = !self.wasd_up_down_statues[4] // 切换
+				} else if !self.shift_press_toggle { // 仅在非"按下切换"模式时，抬起才恢复
+					self.wasd_up_down_statues[4] = false // 长按释放
 				}
 			}
+			// --- [移植 V1.2.0] 结束 ---
 			return
 		}
 
@@ -871,19 +2364,30 @@ func (self *TouchHandler) handel_key_up_down(key_name string, up_down int32, dev
 				return
 			}
 		}
-		if action, exist := self.config.Get("KEY_MAPS").CheckGet(key_name); exist {
-			state, contains := self.key_action_state_save.Load(key_name)
-			if (up_down == UP && !contains) || (up_down == DOWN && contains) {
-				logger.Errorf("key[%s]%s\t状态异常，忽略此次事件", key_name, UDF[up_down])
+		if action, ok := self.config.Get("KEY_MAPS").CheckGet(key_name); ok {
+			state, ok := self.key_action_state_save.Load(key_name)
+			if (up_down == UP && !ok) || (up_down == DOWN && ok) {
+				// --- [移植 V1.4.0] P3: 智能背包键 (允许重复按下) ---
+				action_type := action.Get("TYPE").MustString()
+				if action_type != "CLICK_VIEW_RESET" &&
+					action_type != "SEQUENTIAL_PRESS" &&
+					action_type != "BACKPACK_TOGGLE" && // (P3)
+					action_type != "CLICK_MAP_ON" {
+					// 原版逻辑: 阻止 PRESS/AUTO_FIRE 等重复触发
+					logger.Warnf("key[%s]%s\t状态异常，忽略此次事件", key_name, UDF[up_down])
+				} else {
+					// [V1.4.0] 新逻辑: 允许重复 DOWN
+					self.execute_key_action(time.Now(), key_name, up_down, action, state)
+				}
+				// --- [移植 V1.4.0] 修复结束 ---
 			} else {
-				// logger.Debugf("key[%s]%s\t%v\t%v", key_name, UDF[up_down], action, state)
 				self.execute_key_action(time.Now(), key_name, up_down, action, state)
 			}
 		} else {
 			logger.Debugf("key[%s]\t无触屏映射", key_name)
 		}
 	} else {
-		if jsconfig, exist := self.joystickInfo[dev_name]; exist {
+		if jsconfig, ok := self.joystickInfo[dev_name]; ok {
 			//如果是手柄 则检查是否设置了键盘映射
 			if joystick_btn_map_key_name, ok := jsconfig.Get("MAP_KEYBOARD").CheckGet(key_name); ok {
 				//有则映射到普通按键
@@ -892,9 +2396,17 @@ func (self *TouchHandler) handel_key_up_down(key_name string, up_down int32, dev
 				logger.Debugf("joyStick[%s]\tkey[%s]\t无键盘映射", dev_name, key_name)
 			}
 		} else {
-			if code, exist := friendly_name_2_keycode[key_name]; exist {
+			if code, ok := friendly_name_2_keycode[key_name]; ok {
 				//是合法按键 则输出
 				self.u_input_control(UInput_key_event, int32(code), int32(up_down))
+
+				// --- [移植 V1.3.5] P7: 跟踪物理按键状态 ---
+				if up_down == DOWN {
+					self.real_key_down_state.Store(key_name, true)
+				} else {
+					self.real_key_down_state.Delete(key_name)
+				}
+				// --- [移植 V1.3.5] 结束 ---
 			}
 		}
 	}
@@ -934,6 +2446,7 @@ func (self *TouchHandler) getStick(stick_name string) (float64, float64) {
 	}
 }
 
+// --- [修改 V2.0.0] 移植 v1.4.1 的摇杆轮盘逻辑 ---
 func (self *TouchHandler) handel_abs_events(events []*evdev.Event, dev_type dev_type, dev_name string) {
 	for _, event := range events {
 		if jsconfig, ok := self.joystickInfo[dev_name]; ok && dev_type == type_joystick {
@@ -976,21 +2489,48 @@ func (self *TouchHandler) handel_abs_events(events []*evdev.Event, dev_type dev_
 				self.abs_last.Store(name, formatted_value)
 				//右摇杆控制视角 只需修改值 有单独线程去处理
 				//左摇杆控制轮盘 且与WASD可同时工作 在这里处理
+				// [移植 V1.2.5 回滚] 回滚到 V1.2.3 的摇杆逻辑 (解决 V1.2.5 的“恒星一直转”BUG)
 				if (name == "LS_X" || name == "LS_Y") && self.map_on {
 					ls_x, ls_y := self.getStick("LS")
 					if ls_x == 0.5 && ls_y == 0.5 {
+						// [移植 V1.2.3] 摇杆停止移动
 						if self.ls_wheel_released == false {
+							// --- [移植 V1.4.0] P8: 更新时间, 延迟释放 ---
 							self.ls_wheel_released = true
+							self.wheel_last_input_time = time.Now()
+							// --- [移植 V1.4.0] P8 结束 ---
 						}
 					} else {
+						// [移植 V1.2.3] 摇杆正在移动
 						self.ls_wheel_released = false
-						wheel_range := self.wheel_range
-						if self.wheel_shift_enable {
+
+						// [移植 V1.2.5 回滚] 使用 V1.2.3 的摇杆“方形”逻辑
+						// --- [移植 V1.4.1] P3: 静步模式 ---
+						shift_pressed := self.wasd_up_down_statues[4]
+						walk_mode := self.wheel_walk_mode_enable
+						is_in_shift_range := (shift_pressed && !walk_mode) || (!shift_pressed && walk_mode)
+
+						var wheel_range int32
+						if is_in_shift_range {
 							wheel_range = self.wheel_shift_range
+						} else {
+							wheel_range = self.wheel_range
 						}
-						target_x := self.wheel_init_x + int32(float64(wheel_range)*2*(ls_x-0.5)) //注意这里的X和Y是相反的
+						// --- [移植 V1.4.1] P3 结束 ---
+
+						// 1. [移植 V1.2.3] 计算“主路径”目标点 (未缩放)
+						target_x := self.wheel_init_x + int32(float64(wheel_range)*2*(ls_x-0.5))
 						target_y := self.wheel_init_y + int32(float64(wheel_range)*2*(ls_y-0.5))
-						self.handel_wheel_action(Wheel_action_move, target_x, target_y)
+
+						// 2. [移植 V1.2.3] 计算“恒星曲线”的偏移量 (未缩放)
+						curve_x, curve_y := self.get_star_curve_offset()
+
+						// 3. [移植 V1.2.3] 施加曲线 (未缩放)
+						final_x := target_x + curve_x
+						final_y := target_y + curve_y
+
+						// 4. [移植 V1.2.3] 更新恒星位置 (未缩放)
+						self.handel_wheel_action(1, final_x, final_y) // 1 = Wheel_action_move
 					}
 				}
 			}
@@ -1000,6 +2540,7 @@ func (self *TouchHandler) handel_abs_events(events []*evdev.Event, dev_type dev_
 	}
 }
 
+// --- [修改 V2.0.0] 移植 v4.0.1 的 mix_touch (它已包含 0x7ffffffe 逻辑) ---
 func (self *TouchHandler) mix_touch(touch_events chan *event_pack) {
 	id_2_vid := make([]int32, 10) //硬件ID到虚拟ID的映射
 	var last_id int32 = 0
@@ -1013,17 +2554,16 @@ func (self *TouchHandler) mix_touch(touch_events chan *event_pack) {
 	}
 
 	translate_xy := func(x, y int32) (int32, int32) { //根据设备方向 将eventX的坐标系转换为标准坐标系
+		// (v4.0.1 的 mix_touch 已经在使用 0x7ffffffe)
 		switch global_device_orientation { //
 		case 0: //normal
 			return x, y
 		case 1: //left side down
-			// return y, self.screen_y - x
-			return y, 0x7ffffffe - x
+			return 0x7ffffffe - y, x
 		case 2: //up side down
-			// return self.screen_y - x, self.screen_x - y
 			return 0x7ffffffe - x, 0x7ffffffe - y
 		case 3: //right side down
-			return 0x7ffffffe - y, x
+			return y, 0x7ffffffe - x
 		default:
 			return x, y
 		}
@@ -1041,8 +2581,10 @@ func (self *TouchHandler) mix_touch(touch_events chan *event_pack) {
 			for _, event := range event_pack.events {
 				switch event.Code {
 				case ABS_MT_POSITION_X:
+					// (v4.0.1 的 touch_dev_reader 已经将 event.Value 转为 0x7ffffffe)
 					pos_s[last_id] = []int32{event.Value, pos_s[last_id][1]}
 				case ABS_MT_POSITION_Y:
+					// (v4.0.1 的 touch_dev_reader 已经将 event.Value 转为 0x7ffffffe)
 					pos_s[last_id] = []int32{pos_s[last_id][0], event.Value}
 				case ABS_MT_TRACKING_ID:
 					if event.Value == -1 {
@@ -1058,6 +2600,7 @@ func (self *TouchHandler) mix_touch(touch_events chan *event_pack) {
 				if copy_id_statuses[i] != id_statuses[i] {
 					if id_statuses[i] { //false -> true 申请
 						x, y := translate_xy(pos_s[i][0], pos_s[i][1])
+						// (x, y 已经是 0x7ffffffe, 设为 false)
 						id_2_vid[i] = self.touch_require(x, y, false)
 						logger.Debugf("mixTouch\trequire\t[%d] translate_xy(%d,%d) => (%d,%d)", i, pos_s[i][0], pos_s[i][1], x, y)
 					} else {
@@ -1067,6 +2610,7 @@ func (self *TouchHandler) mix_touch(touch_events chan *event_pack) {
 				} else {
 					if pos_s[i][0] != copy_pos_s[i][0] || pos_s[i][1] != copy_pos_s[i][1] {
 						x, y := translate_xy(pos_s[i][0], pos_s[i][1])
+						// (x, y 已经是 0x7ffffffe, 设为 false)
 						self.touch_move(id_2_vid[i], x, y, false)
 						logger.Debugf("mixTouch\tmove\t[%d] translate_xy(%d,%d) => (%d,%d)", i, pos_s[i][0], pos_s[i][1], x, y)
 					}
